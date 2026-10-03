@@ -1,0 +1,2 @@
+# Optional: high-fidelity layout parsing (pulls ML models; ~2 GB). Enable with DOCUMENT_PARSER=docling.
+docling>=2.0

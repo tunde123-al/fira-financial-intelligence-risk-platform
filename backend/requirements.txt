@@ -1,0 +1,23 @@
+# FIRA backend runtime dependencies
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2
+alembic>=1.13
+pandas>=2.2
+numpy>=1.26
+scipy>=1.12
+scikit-learn>=1.5
+joblib>=1.4
+networkx>=3.3
+PyYAML>=6.0
+PyJWT>=2.8
+python-multipart>=0.0.9
+neo4j>=5.20
+langgraph>=0.2
+mcp>=1.9
+pdfplumber>=0.11
+python-docx>=1.1
+pytesseract>=0.3.10
+Pillow>=10.0

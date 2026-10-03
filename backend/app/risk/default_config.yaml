@@ -1,0 +1,123 @@
+# FIRA risk engine configuration — ENGINEERING DEFAULTS.
+#
+# These weights and thresholds were chosen by the FIRA engineering team to make
+# the synthetic benchmark behave sensibly. They are NOT regulatory values, not
+# calibrated on real portfolio data, and must be re-validated (and approved by
+# the model-risk owner) before use on real customers. Changes go through the
+# controlled improvement loop: proposal -> offline regression eval -> approval.
+version: "default-1"
+
+score:
+  cap: 100
+  # bands are inclusive lower bounds
+  bands: {low: 0, medium: 25, high: 50, critical: 75}
+  # an entity whose score is >= this is "flagged" for investigation priority
+  investigation_threshold: 40
+  # strength ramp: a signal at exactly its threshold contributes 50% of its
+  # weight; at (1 + ramp) x threshold it contributes 100%.
+  ramp: 1.0
+
+# Correlated signals share a group cap so the same behaviour is not counted twice.
+group_caps:
+  velocity: 22
+  amount: 20
+  flow: 32
+  geo: 45
+  device: 36
+
+signals:
+  TRANSACTION_BURST:
+    weight: 20
+    group: velocity
+    window_minutes: 60
+    min_count: 6
+    baseline_multiplier: 2.0
+  VELOCITY_SPIKE:
+    weight: 14
+    group: velocity
+    min_daily: 6
+    std_multiplier: 4.0
+  AMOUNT_DEVIATION:
+    weight: 16
+    group: amount
+    mad_multiplier: 6.0
+    p99_multiplier: 2.0
+    min_usd: 200
+    min_baseline_txns: 5
+  PEER_AMOUNT_DEVIATION:
+    weight: 10
+    group: amount
+    peer_p99_multiplier: 3.0
+  RAPID_PASS_THROUGH:
+    weight: 24
+    group: flow
+    horizon_hours: 24
+    min_ratio: 0.7
+    min_inbound_usd: 500
+    min_inbound_count: 3
+    inbound_types: [transfer]   # salary/deposits are expected income, not pass-through candidates
+    ramp: 0.35          # ratio is bounded by 1.0, so full strength at ~0.95
+  FAN_IN:
+    weight: 18
+    group: flow
+    min_counterparties: 8
+    baseline_multiplier: 3.0
+  GEO_NEW_COUNTRY:
+    weight: 12
+    group: geo
+    min_txns: 1
+  IMPOSSIBLE_TRAVEL:
+    weight: 40
+    group: geo
+    max_speed_kmh: 900
+    min_distance_km: 500
+    physical_channels_only: true
+  NEW_DEVICE:
+    weight: 12
+    group: device
+    min_value_share: 0.3
+    min_txns: 3
+  DEVICE_SHARING:
+    weight: 32
+    group: device
+    min_customers: 3
+    lookback_days: 90
+  SHARED_IDENTIFIER:
+    weight: 8
+    group: device
+    min_customers: 3
+    always_flag_types: [phone, email]
+  CIRCULAR_FLOW:
+    weight: 30
+    max_cycle_length: 5
+    max_hop_gap_hours: 72
+    amount_tolerance: 0.3
+    min_cycle_usd: 500
+  DORMANT_REACTIVATION:
+    weight: 26
+    min_dormant_days: 90
+    min_window_usd: 1000
+  HIGH_RISK_MERCHANT:
+    weight: 24
+    min_txns: 3
+    baseline_multiplier: 3.0
+    min_usd: 300
+  BEHAVIOURAL_SHIFT:
+    weight: 8
+    min_jsd: 0.35
+    min_window_txns: 8
+  NETWORK_EXPOSURE:
+    weight: 8
+    max_hops: 1
+    min_flagged: 1
+  HISTORICAL_ALERTS:
+    weight: 4
+    saturate_at: 3
+  ML_ANOMALY:
+    weight: 8
+    min_percentile: 0.99
+
+# Jurisdictions requiring enhanced due diligence. Deliberately EMPTY: populate
+# from your institution's official sources (e.g. current FATF public statements,
+# your regulator's lists). FIRA does not ship an opinion on real countries.
+high_risk_jurisdictions: []
