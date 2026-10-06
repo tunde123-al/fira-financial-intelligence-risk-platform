@@ -1,0 +1,71 @@
+# FIRA transaction-monitoring configuration. ENGINEERING DEFAULTS for a synthetic-data prototype;
+# not calibrated on real data and not regulatory values.
+version: "monitoring-1"
+
+# Window used when a monitoring run assesses a customer (same calibration as the risk engine).
+lookback_days: 30
+baseline_days: 90
+# Customers with at least one transaction in the last N days before the run's window end are screened.
+active_days: 1
+
+alerting:
+  # Alert policy by detector tier (see app/risk/catalog.py):
+  #   standalone  typology detectors (structuring, circular flow, mule patterns, ...): alert on their own
+  #   supporting  deviations from the customer's own baseline that are common in benign behaviour (new device,
+  #               new country, large purchase, volume spike): alert only when the customer's COMBINED risk score
+  #               reaches the threshold below
+  #   context     (history, network exposure, behavioural shift, ML): add to the score, never alert
+  # Null = use the catalogue tiers. A list here replaces the standalone tier.
+  detectors: null
+  # Null = the risk configuration's investigation threshold (score.investigation_threshold, default 40).
+  # Set 0 to let every triggered supporting detector alert (noisy; shown in docs/EVALUATION.md).
+  supporting_min_customer_score: null
+  # A triggered detector must contribute at least this many (capped) score points to raise an alert.
+  min_detector_points: 0.0
+  # Severity is raised to "critical" when the customer's overall score is in this band or above.
+  critical_band: critical
+
+deduplication:
+  # With no linked transactions to compare, a resolved alert for the same (customer, detector)
+  # suppresses a new one for this many days after it was resolved.
+  resolved_cooldown_days: 7
+
+cases:
+  priority_by_severity: {low: low, medium: medium, high: high, critical: critical}
+
+# Ingestion data-quality gate. Rows failing a rule are quarantined with a reason code (never silently dropped).
+data_quality:
+  transaction_types: [bill_payment, card_payment, cash_withdrawal, deposit, salary, transfer]
+  channels: [web, mobile, pos, atm, branch, api]
+  statuses: [completed, failed, reversed, pending]
+  max_age_days: 3650            # older timestamps are rejected (TIMESTAMP_OUT_OF_RANGE)
+  max_future_hours: 24          # timestamps further ahead of the reference time are rejected
+  late_after_hours: 24          # accepted but counted "late" when older than the newest stored transaction by this much
+  likely_duplicate_window_seconds: 60   # same parties + amount + currency within this window = LIKELY_DUPLICATE
+  duplicate_policy: reject      # reject | accept (accepted likely-duplicates are not flagged)
+  reject_closed_accounts: true
+
+# Explainable alert triage (heuristic ranking aid, NOT a probability). Factor maxima are fixed in code and sum to 100.
+triage:
+  enabled: true
+  thresholds: {critical: 65, high: 50, medium: 30}   # score >= value; below medium = LOW
+  severity_points: {low: 3, medium: 7, high: 11, critical: 13}
+  tier_points: {standalone: 5, supporting: 4, context: 0}
+  amount_tiers: [[1000, 2], [5000, 4], [10000, 6], [50000, 8]]   # [USD upper bound, points]; above = 10
+  network_points_full: 10
+  age_hours: [[24, 1], [48, 3], [96, 5]]             # [hours unresolved, points]
+  overdue_hours: {CRITICAL: 4, HIGH: 24, MEDIUM: 72, LOW: 168}   # assumed review-time targets for "overdue" flags
+
+# Money-mule risk indicators (an evidence view for investigators; indicators are not proof).
+mule:
+  window_days: 30
+  fan_in_min: 5               # distinct sending accounts
+  fan_out_min: 5              # distinct beneficiaries
+  rapid_hours: 24             # inbound value leaving within this many hours counts as rapid movement
+  rapid_share: 0.7            # share of inbound USD that must leave within rapid_hours
+  retention_max: 0.15         # at most this share of inbound value remains
+  min_usd: 1000               # minimum inbound value for the flow indicators
+  new_account_days: 30
+  bands: {high: 60, medium: 35, low: 15}
+  candidate_limit: 200        # customers examined by the suspects list
+

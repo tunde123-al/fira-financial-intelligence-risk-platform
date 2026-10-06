@@ -39,6 +39,40 @@ timestamp, window`.
 | HISTORICAL_ALERTS | alerts before the window | ≥ 1 |
 | ML_ANOMALY | Isolation-Forest percentile of the metric vector | ≥ 99th percentile of the training population |
 
+### Added in the monitoring upgrade (risk configuration `default-2`)
+
+| Signal | Observed | Threshold (defaults) |
+|---|---|---|
+| FAN_OUT | distinct beneficiaries of completed outbound transfers in the window | max(8, 3 × baseline rate) |
+| STRUCTURING | most completed outbound (or inbound cash-type) transactions between 80% and 100% of the reporting threshold inside any rolling 24 h | ≥ 3 transactions summing to at least the threshold, and more than 2 × the customer's own baseline maximum for that window |
+
+The STRUCTURING reporting threshold (default USD 10,000) is an **illustrative, configurable** value for a
+fictional institution, not a statement of any real regulation. Existing weights and thresholds are
+unchanged; only the version string and the two new signals differ from `default-1`. Existing committed
+evaluation results were produced with `default-1`.
+
+**Temporal windows.** Burst (60 minutes), structuring (`window_hours`, 24; set 168 for 7 days),
+pass-through (`horizon_hours`, 24), velocity (daily counts against a 90-day baseline), and the 30-day
+assessment window are all configuration. `GET /api/customers/{id}/activity-windows` shows 1 h, 24 h, 7 d
+and 30 d counts and value next to the baseline expectation.
+
+**Categories and the score breakdown.** Every detector belongs to a category (transaction behaviour,
+fund flow, geographic, device and identity, network, historical alerts, anomaly model). The API returns the
+capped points per category; they add up to the score (a `cap_adjustment` row appears only if the global cap
+of 100 applies). There is **no customer-profile component and no document component** in the score: the
+engine has no such inputs, and documents are retrieved as context only.
+
+**Alert tiers (monitoring).** `standalone` detectors (structuring, circular flow, pass-through, fan-in,
+fan-out, burst, impossible travel, device sharing, dormant reactivation, high-risk merchant) raise an alert on
+their own. `supporting` detectors compare a customer with their own baseline or peers and fire often in
+benign behaviour (new device, new country, unusual amount, volume spike, shared identifier): they raise an
+alert only when the customer's combined score reaches the investigation threshold. `context` signals
+(historical alerts, network exposure, behavioural shift, ML) never raise alerts. The tiers are in
+`app/risk/catalog.py`; the gate is `alerting.supporting_min_customer_score` in `monitoring_config.yaml`.
+
+**`confidence`** on signals is a heuristic constant (0.6, 0.85 or 0.9), not a calibrated probability. It is
+kept in the existing risk response for compatibility, but the monitoring API deliberately does not expose it.
+
 ## Score
 
 ```

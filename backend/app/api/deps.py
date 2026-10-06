@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.observability import request_id_var, user_id_var
 from app.data.store import utcnow
 from app.schemas.domain import AuditEvent
-from app.security.auth import AuthenticationError, decode_token
+from app.security.auth import AuthenticationError, decode_claims
 from app.security.masking import mask_payload
 from app.security.principal import Principal
 
@@ -30,10 +30,15 @@ def get_principal(request: Request, creds: HTTPAuthorizationCredentials | None =
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing bearer token",
                             headers={"WWW-Authenticate": "Bearer"})
     try:
-        p = decode_token(c.settings, creds.credentials)
+        claims = decode_claims(c.settings, creds.credentials)
+        revoked = getattr(request.app.state, "revocations", None)
+        if revoked is not None and revoked.is_revoked(claims.get("jti")):
+            raise AuthenticationError("token revoked")
     except AuthenticationError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or expired token",
                             headers={"WWW-Authenticate": "Bearer"}) from None
+    p = Principal(user_id=str(claims["sub"]), role=str(claims["role"]), via="api")
+    request.state.claims = claims
     user_id_var.set(p.user_id)
     request.state.principal = p
     return p

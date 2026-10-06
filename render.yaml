@@ -1,0 +1,50 @@
+# Render blueprint for a PUBLIC SYNTHETIC-DATA DEMO of FIRA (one web service + one PostgreSQL database).
+# NOT TESTED ON RENDER by the author: see docs/DEPLOYMENT.md ("Public demo on Render") for what has and has not
+# been verified. Neo4j, Qdrant and LLM providers are deliberately not used.
+#
+# Secrets are never stored in this file: values marked `sync: false` are entered in the Render dashboard when
+# the blueprint is first applied; `generateValue: true` makes Render create a random value.
+databases:
+  - name: fira-db
+    databaseName: fira
+    user: fira
+    plan: free            # free Render PostgreSQL databases expire; use a paid plan for anything lasting
+
+services:
+  - type: web
+    name: fira-demo
+    runtime: docker
+    dockerfilePath: ./infrastructure/docker/render.Dockerfile
+    dockerContext: .
+    plan: starter         # the pandas/scikit-learn stack needs more than the 512 MB of the free plan
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: FIRA_ENV
+        value: production
+      - key: DATA_BACKEND
+        value: postgres
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fira-db
+          property: connectionString    # postgres:// URLs are normalised to postgresql+psycopg:// by the app
+      - key: GRAPH_BACKEND
+        value: networkx                 # Neo4j stays optional
+      - key: VECTOR_BACKEND
+        value: memory                   # Qdrant stays optional
+      - key: LLM_PROVIDER
+        value: none                     # no external model calls in the public demo
+      - key: SEED_CUSTOMERS
+        value: "2000"                   # smaller than the 10,000 default so start-up fits a small instance
+      - key: PII_MASKING
+        value: "true"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: JWT_SECRET
+        generateValue: true             # >= 32 characters, required in production
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false                     # choose at least 12 characters (production check); never reuse a real password
+      - key: BOOTSTRAP_ANALYST_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false                     # the service's own https URL once known (same-origin UI needs none)

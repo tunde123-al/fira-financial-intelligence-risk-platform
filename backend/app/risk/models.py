@@ -50,6 +50,13 @@ class Contribution(BaseModel):
     capped: bool = False
 
 
+class CategoryPoints(BaseModel):
+    category: str
+    label: str
+    points: float
+    signals: list[str] = Field(default_factory=list)
+
+
 class RiskAssessment(BaseModel):
     entity_type: str
     entity_id: str
@@ -59,6 +66,7 @@ class RiskAssessment(BaseModel):
     flagged: bool
     investigation_threshold: float
     contributors: list[Contribution]
+    category_breakdown: list[CategoryPoints] = Field(default_factory=list)
     signals: list[RiskSignal]
     not_evaluated: list[NotEvaluated]
     metrics: dict[str, dict[str, Any]] = Field(default_factory=dict)

@@ -28,6 +28,43 @@ transfers have both account ids set.
 | `agent_episodes` | request, plan, tool calls, observations, retrieved evidence refs, a **concise reasoning summary**, final output, evaluation metrics, human feedback, model, tokens, latency. It never stores model chain-of-thought |
 | `audit_log` | Trail of user, role, action, tool, entity, result, request id, details. Append-only is enforced by triggers (revision 0002) in PostgreSQL mode; not cryptographically tamper-proof |
 
+## Transaction monitoring, alerts and cases (migration 0003)
+
+Created by `app/db/schema_monitoring.sql`. These tables are **separate from the seeded legacy `alerts`
+table** so FIRA's own output never feeds back into its inputs.
+
+| Table | Purpose |
+|---|---|
+| `monitoring_runs` | One row per monitoring run: window, risk-config version and fingerprint, customers screened, alerts created/merged/suppressed, errors, duration, per-stage timing in `details` |
+| `monitoring_alerts` | FIRA-generated alerts: customer, optional account and first transaction, `detector_id`, severity (`low`..`critical`), `risk_score` (customer total) and `risk_contribution` (detector points), `status` (NEW, TRIAGED, INVESTIGATING, ESCALATED, RESOLVED), `explanation` (jsonb), `occurrence_count`, assignee, `case_id`, `resolution` (CLEARED, FALSE_POSITIVE, CONFIRMED_SUSPICIOUS). CHECK: a resolution, `resolved_at` exist exactly when the status is RESOLVED. **Partial unique index `(customer_id, detector_id) WHERE status <> 'RESOLVED'`** enforces the deduplication policy |
+| `monitoring_alert_transactions` | The transactions that caused an alert (foreign keys to `transactions`) |
+| `monitoring_alert_events` | Append-only alert history (created, updated, assigned, status_changed, resolved, case_linked) |
+| `cases` | Case number (`FC-YYYY-NNNNNN` from a sequence), customer, status (OPEN, INVESTIGATING, ESCALATED, PENDING_REVIEW, CLOSED), priority, assignee, optional `investigation_id`, decision and reason. CHECK: a closed case has `closed_at` and a closing decision. **Partial unique index: one unclosed case per customer** |
+| `case_events` | Append-only case history |
+| `case_notes` | Append-only investigator notes |
+| `case_evidence` | Evidence attached to a case, with an evidence class (DATABASE_FACT, RULE_RESULT, GRAPH_RESULT, DOCUMENT_EVIDENCE, LLM_GENERATED_SUMMARY) and the source |
+
+Indexes cover the alert-queue filters (status + time, severity, detector, customer, assignee, risk score,
+case). Dedup policy and state machines are specified in TRANSACTION_MONITORING_ARCHITECTURE.md.
+
+## Production-oriented additions (migration 0004)
+
+Created by `app/db/schema_production.sql` (idempotent; `alembic downgrade 0003` removes it). Needs revisions 0001 to 0003.
+
+| Object | Purpose |
+|---|---|
+| `monitoring_alerts.triage_score` (0-100), `triage_priority` (CRITICAL/HIGH/MEDIUM/LOW), `triage_factors` (jsonb: label, points, max, value, reason per factor), `triage_computed_at` | Heuristic triage, stored with its explanation. The alert's `explanation.triage_context` keeps the customer-level inputs so the score can be recomputed |
+| `ingestion_batches` | One row per ingestion batch, written once when the batch finishes: source, status (`COMPLETED`/`FAILED`), `expected_count` (null when the source declared nothing), `received`, `processed`, `rejected`, `duplicates`, `malformed`, `late`, `failed`, `missing`, `ids_generated`, `customers_affected`, `error`, `details`. **`CHECK received = processed + rejected + failed`** |
+| `rejected_transactions` | Quarantine: `batch_id` (FK), `row_number`, `transaction_id`, `reason_code`, `reason_group` (`malformed`, `duplicate`, `invalid`, `referential`), `reason`, sanitised `payload` (jsonb: IP reduced to /16, strings truncated), `created_at` |
+| `config_change_log` | Configuration name, setting path, old and new value (jsonb), changed by, reason, source (`api`, `api:config_approve`, `startup`, `baseline`), time. Snapshot rows (`path = '(snapshot)'`) hold the canonical configuration used for the next comparison |
+| triggers `ib_append_only`, `rt_append_only`, `ccl_append_only` | The three new ledgers reject `UPDATE` and `DELETE` (same function as `audit_log`, which now names the table in its message) |
+| indexes | `ix_malerts_assignee_triage (assigned_to, triage_score DESC NULLS LAST) WHERE status <> 'RESOLVED'`; `ix_malerts_open_triage (triage_score DESC NULLS LAST) WHERE status <> 'RESOLVED'`; `ix_malerts_resolved_at (resolved_at DESC) WHERE status = 'RESOLVED'`; `ix_cases_assigned_status (assigned_to, status)` (replaces `ix_cases_assigned`); `ix_batches_started`, `ix_rejected_batch`, `ix_rejected_reason`, `ix_cfglog_ts`. Each alert/case index was measured on 300,000 synthetic alerts before and after (docs/PERFORMANCE.md) |
+
+Reason codes (22): malformed `MALFORMED_ROW`, `MISSING_FIELD`, `INVALID_TIMESTAMP`, `INVALID_AMOUNT`, `INVALID_CURRENCY`,
+`INVALID_ID_FORMAT`, `INVALID_IP`, `INVALID_STATUS`; duplicate `DUPLICATE_ID`, `LIKELY_DUPLICATE`; referential `UNKNOWN_ACCOUNT`,
+`UNKNOWN_DEVICE`, `UNKNOWN_MERCHANT`; invalid `NON_POSITIVE_AMOUNT`, `UNSUPPORTED_CURRENCY`, `TIMESTAMP_OUT_OF_RANGE`, `INVALID_TYPE`,
+`INVALID_CHANNEL`, `DIRECTION_MISMATCH`, `NO_ACCOUNT`, `ACCOUNT_CLOSED`, `MISSING_TRANSACTION_ID`.
+
 ## Knowledge and governance
 
 | Table | Purpose |

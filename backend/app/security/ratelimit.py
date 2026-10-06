@@ -20,6 +20,8 @@ class RateLimiter:
         """Returns (allowed, retry_after_seconds)."""
         now = time.monotonic()
         with self._lock:
+            if len(self._buckets) > 20_000:  # bounded memory: forget buckets that have been idle for ten minutes
+                self._buckets = {k: v for k, v in self._buckets.items() if now - v[1] < 600}
             tokens, last = self._buckets.get(key, (self.capacity, now))
             tokens = min(self.capacity, tokens + (now - last) * self.rate)
             if tokens >= cost:

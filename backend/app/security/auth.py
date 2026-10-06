@@ -68,7 +68,7 @@ def create_token(settings: Any, user_id: str, username: str, role: str) -> dict[
     return {"access_token": token, "token_type": "bearer", "expires_at": exp.isoformat(), "role": role}
 
 
-def decode_token(settings: Any, token: str) -> Principal:
+def decode_claims(settings: Any, token: str) -> dict[str, Any]:
     try:
         claims = jwt.decode(token, jwt_secret(settings), algorithms=["HS256"], issuer="fira",
                             options={"require": ["exp", "sub", "role", "iat"]})
@@ -76,6 +76,11 @@ def decode_token(settings: Any, token: str) -> Principal:
         raise AuthenticationError(f"invalid token: {type(e).__name__}") from None
     if claims.get("role") not in ROLE_RANK:
         raise AuthenticationError("invalid role")
+    return dict(claims)
+
+
+def decode_token(settings: Any, token: str) -> Principal:
+    claims = decode_claims(settings, token)
     return Principal(user_id=str(claims["sub"]), role=str(claims["role"]), via="api")
 
 

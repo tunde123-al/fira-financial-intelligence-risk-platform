@@ -1,0 +1,394 @@
+{
+ "created_at": "2026-10-03T18:24:48.554302+00:00",
+ "alerts": 300000,
+ "cases": 100000,
+ "synthetic": true,
+ "queries": {},
+ "candidates": {
+  "ix_malerts_assignee_triage": {
+   "ddl": "CREATE INDEX ix_malerts_assignee_triage ON monitoring_alerts (assigned_to, triage_score DESC NULLS LAST) WHERE status <> 'RESOLVED'",
+   "used_by": [
+    "my_open_alerts_by_triage"
+   ],
+   "unused": false,
+   "per_query": {
+    "my_open_alerts_by_triage": {
+     "before_ms": 9.956,
+     "after_ms": 0.914,
+     "plan_after": [
+      "Incremental Sort",
+      "Index Scan using ix_malerts_assignee_triage",
+      "Limit"
+     ]
+    },
+    "queue_top_by_triage": {
+     "before_ms": 60.533,
+     "after_ms": 61.224,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "queue_top_critical_high": {
+     "before_ms": 61.03,
+     "after_ms": 59.782,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "recently_resolved": {
+     "before_ms": 118.602,
+     "after_ms": 117.045,
+     "plan_after": [
+      "Limit",
+      "Seq Scan",
+      "Sort"
+     ]
+    },
+    "my_open_cases": {
+     "before_ms": 0.603,
+     "after_ms": 0.582,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_cases_assigned",
+      "Bitmap Index Scan using ix_cases_status",
+      "BitmapAnd",
+      "Limit"
+     ]
+    }
+   },
+   "size_mb": 3.72
+  },
+  "ix_malerts_open_triage": {
+   "ddl": "CREATE INDEX ix_malerts_open_triage ON monitoring_alerts (triage_score DESC NULLS LAST) WHERE status <> 'RESOLVED'",
+   "used_by": [
+    "my_open_alerts_by_triage",
+    "queue_top_by_triage",
+    "queue_top_critical_high"
+   ],
+   "unused": false,
+   "per_query": {
+    "my_open_alerts_by_triage": {
+     "before_ms": 9.956,
+     "after_ms": 24.032,
+     "plan_after": [
+      "Incremental Sort",
+      "Index Scan using ix_malerts_open_triage",
+      "Limit"
+     ]
+    },
+    "queue_top_by_triage": {
+     "before_ms": 60.533,
+     "after_ms": 0.146,
+     "plan_after": [
+      "Incremental Sort",
+      "Index Scan using ix_malerts_open_triage",
+      "Limit"
+     ]
+    },
+    "queue_top_critical_high": {
+     "before_ms": 61.03,
+     "after_ms": 0.124,
+     "plan_after": [
+      "Incremental Sort",
+      "Index Scan using ix_malerts_open_triage",
+      "Limit"
+     ]
+    },
+    "recently_resolved": {
+     "before_ms": 118.602,
+     "after_ms": 119.424,
+     "plan_after": [
+      "Limit",
+      "Seq Scan",
+      "Sort"
+     ]
+    },
+    "my_open_cases": {
+     "before_ms": 0.603,
+     "after_ms": 0.605,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_cases_assigned",
+      "Bitmap Index Scan using ix_cases_status",
+      "BitmapAnd",
+      "Limit"
+     ]
+    }
+   },
+   "size_mb": 2.41
+  },
+  "ix_malerts_open_triage_all": {
+   "ddl": "CREATE INDEX ix_malerts_open_triage_all ON monitoring_alerts (triage_score DESC NULLS LAST, alert_id)",
+   "used_by": [
+    "my_open_alerts_by_triage",
+    "queue_top_by_triage",
+    "queue_top_critical_high"
+   ],
+   "unused": false,
+   "per_query": {
+    "my_open_alerts_by_triage": {
+     "before_ms": 9.956,
+     "after_ms": 63.436,
+     "plan_after": [
+      "Index Scan using ix_malerts_open_triage_all",
+      "Limit"
+     ]
+    },
+    "queue_top_by_triage": {
+     "before_ms": 60.533,
+     "after_ms": 0.103,
+     "plan_after": [
+      "Index Scan using ix_malerts_open_triage_all",
+      "Limit"
+     ]
+    },
+    "queue_top_critical_high": {
+     "before_ms": 61.03,
+     "after_ms": 0.114,
+     "plan_after": [
+      "Index Scan using ix_malerts_open_triage_all",
+      "Limit"
+     ]
+    },
+    "recently_resolved": {
+     "before_ms": 118.602,
+     "after_ms": 119.852,
+     "plan_after": [
+      "Limit",
+      "Seq Scan",
+      "Sort"
+     ]
+    },
+    "my_open_cases": {
+     "before_ms": 0.603,
+     "after_ms": 0.617,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_cases_assigned",
+      "Bitmap Index Scan using ix_cases_status",
+      "BitmapAnd",
+      "Limit"
+     ]
+    }
+   },
+   "size_mb": 14.25
+  },
+  "ix_malerts_resolved_at": {
+   "ddl": "CREATE INDEX ix_malerts_resolved_at ON monitoring_alerts (resolved_at DESC) WHERE status = 'RESOLVED'",
+   "used_by": [
+    "recently_resolved"
+   ],
+   "unused": false,
+   "per_query": {
+    "my_open_alerts_by_triage": {
+     "before_ms": 9.956,
+     "after_ms": 9.932,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_assigned",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "BitmapAnd",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "queue_top_by_triage": {
+     "before_ms": 60.533,
+     "after_ms": 61.303,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "queue_top_critical_high": {
+     "before_ms": 61.03,
+     "after_ms": 58.981,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "recently_resolved": {
+     "before_ms": 118.602,
+     "after_ms": 0.588,
+     "plan_after": [
+      "Index Scan using ix_malerts_resolved_at",
+      "Limit"
+     ]
+    },
+    "my_open_cases": {
+     "before_ms": 0.603,
+     "after_ms": 0.598,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_cases_assigned",
+      "Bitmap Index Scan using ix_cases_status",
+      "BitmapAnd",
+      "Limit"
+     ]
+    }
+   },
+   "size_mb": 1.31
+  },
+  "ix_cases_assigned_status": {
+   "ddl": "CREATE INDEX ix_cases_assigned_status ON cases (assigned_to, status)",
+   "used_by": [
+    "my_open_cases"
+   ],
+   "unused": false,
+   "per_query": {
+    "my_open_alerts_by_triage": {
+     "before_ms": 9.956,
+     "after_ms": 9.86,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_assigned",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "BitmapAnd",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "queue_top_by_triage": {
+     "before_ms": 60.533,
+     "after_ms": 61.074,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "queue_top_critical_high": {
+     "before_ms": 61.03,
+     "after_ms": 60.192,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_malerts_status_triggered",
+      "Limit",
+      "Sort"
+     ]
+    },
+    "recently_resolved": {
+     "before_ms": 118.602,
+     "after_ms": 118.98,
+     "plan_after": [
+      "Limit",
+      "Seq Scan",
+      "Sort"
+     ]
+    },
+    "my_open_cases": {
+     "before_ms": 0.603,
+     "after_ms": 0.031,
+     "plan_after": [
+      "Bitmap Heap Scan",
+      "Bitmap Index Scan using ix_cases_assigned_status",
+      "Limit"
+     ]
+    }
+   },
+   "size_mb": 0.7
+  }
+ },
+ "baseline": {
+  "my_open_alerts_by_triage": {
+   "median_ms": 9.956,
+   "plan": [
+    "Bitmap Heap Scan",
+    "Bitmap Index Scan using ix_malerts_assigned",
+    "Bitmap Index Scan using ix_malerts_status_triggered",
+    "BitmapAnd",
+    "Limit",
+    "Sort"
+   ]
+  },
+  "queue_top_by_triage": {
+   "median_ms": 60.533,
+   "plan": [
+    "Bitmap Heap Scan",
+    "Bitmap Index Scan using ix_malerts_status_triggered",
+    "Limit",
+    "Sort"
+   ]
+  },
+  "queue_top_critical_high": {
+   "median_ms": 61.03,
+   "plan": [
+    "Bitmap Heap Scan",
+    "Bitmap Index Scan using ix_malerts_status_triggered",
+    "Limit",
+    "Sort"
+   ]
+  },
+  "recently_resolved": {
+   "median_ms": 118.602,
+   "plan": [
+    "Limit",
+    "Seq Scan",
+    "Sort"
+   ]
+  },
+  "my_open_cases": {
+   "median_ms": 0.603,
+   "plan": [
+    "Bitmap Heap Scan",
+    "Bitmap Index Scan using ix_cases_assigned",
+    "Bitmap Index Scan using ix_cases_status",
+    "BitmapAnd",
+    "Limit"
+   ]
+  }
+ },
+ "shipped_together": {
+  "my_open_alerts_by_triage": {
+   "median_ms": 1.051,
+   "plan": [
+    "Incremental Sort",
+    "Index Scan using ix_malerts_assignee_triage",
+    "Limit"
+   ]
+  },
+  "queue_top_by_triage": {
+   "median_ms": 0.161,
+   "plan": [
+    "Incremental Sort",
+    "Index Scan using ix_malerts_open_triage",
+    "Limit"
+   ]
+  },
+  "queue_top_critical_high": {
+   "median_ms": 0.158,
+   "plan": [
+    "Incremental Sort",
+    "Index Scan using ix_malerts_open_triage",
+    "Limit"
+   ]
+  },
+  "recently_resolved": {
+   "median_ms": 0.571,
+   "plan": [
+    "Index Scan using ix_malerts_resolved_at",
+    "Limit"
+   ]
+  },
+  "my_open_cases": {
+   "median_ms": 0.038,
+   "plan": [
+    "Bitmap Heap Scan",
+    "Bitmap Index Scan using ix_cases_assigned_status",
+    "Limit"
+   ]
+  }
+ }
+}

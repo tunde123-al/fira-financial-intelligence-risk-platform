@@ -5,7 +5,7 @@
 # calibrated on real portfolio data, and must be re-validated (and approved by
 # the model-risk owner) before use on real customers. Changes go through the
 # controlled improvement loop: proposal -> offline regression eval -> approval.
-version: "default-1"
+version: "default-2"   # default-2 adds STRUCTURING and FAN_OUT (monitoring upgrade); weights of existing signals unchanged
 
 score:
   cap: 100
@@ -62,6 +62,22 @@ signals:
     group: flow
     min_counterparties: 8
     baseline_multiplier: 3.0
+  FAN_OUT:
+    weight: 14
+    group: flow
+    min_counterparties: 8
+    baseline_multiplier: 3.0
+    transaction_types: [transfer]
+  STRUCTURING:
+    weight: 22
+    # ILLUSTRATIVE reporting threshold for a fictional institution, not a statement of any real regulation.
+    reporting_threshold_usd: 10000
+    lower_ratio: 0.8          # a transaction counts if it is within [lower_ratio x threshold, threshold)
+    window_hours: 24          # rolling window (temporal analysis: also try 168 for 7 days)
+    min_count: 3              # near-threshold transactions needed inside the window
+    min_total_ratio: 1.0      # their sum must reach this share of the threshold
+    baseline_multiplier: 2.0  # customers who habitually transact in the band need more
+    transaction_types: [cash_withdrawal, transfer, deposit]
   GEO_NEW_COUNTRY:
     weight: 12
     group: geo

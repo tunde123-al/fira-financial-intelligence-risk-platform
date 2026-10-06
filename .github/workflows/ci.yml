@@ -18,15 +18,18 @@ jobs:
       - run: pip install -r backend/requirements-dev.txt
       - name: Lint (ruff)
         working-directory: backend
-        run: ruff check app tests
+        run: ruff check app tests alembic ../infrastructure/scripts/pg_backup.py ../infrastructure/scripts/verify_restored_app.py
       - name: Type check (mypy)
         working-directory: backend
-        run: mypy app
+        run: mypy app ../infrastructure/scripts/pg_backup.py ../infrastructure/scripts/verify_restored_app.py
       - uses: actions/setup-node@v4
         with: {node-version: "20"}
-      - name: Type check and build (TypeScript, Vite)
+      - name: Type check, unit tests and build (TypeScript, Vitest, Vite)
         working-directory: frontend
-        run: npm ci && npm run typecheck && npm run build
+        run: npm ci && npm run typecheck && npm test && npm run build
+      - name: Dependency audit (npm)
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -36,9 +39,10 @@ jobs:
         with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements-dev.txt}
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: pip install -r backend/requirements-dev.txt
-      - name: Unit, agent and end-to-end tests
+      - name: Unit, agent and end-to-end tests (coverage floor)
         working-directory: backend
-        run: pytest -q tests/unit tests/agent tests/e2e --cov=app --cov-report=term-missing:skip-covered
+        # The floor is set just under the measured coverage (docs/TESTING.md) so it catches large untested additions
+        run: pytest -q tests/unit tests/agent tests/e2e --cov=app --cov-report=term-missing:skip-covered --cov-fail-under=75
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -68,12 +72,42 @@ jobs:
       - run: pip install -r backend/requirements-dev.txt
       - name: Wait for Neo4j
         run: for i in $(seq 1 60); do (echo > /dev/tcp/localhost/7687) 2>/dev/null && break; sleep 2; done
-      - name: Migrations (alembic)
+      - name: Migrations (alembic) - upgrade, prove 0004 is reversible, upgrade again
         working-directory: backend
-        run: alembic upgrade head
+        run: |
+          alembic upgrade head
+          alembic downgrade 0003
+          alembic upgrade head
+          alembic current
       - name: Integration tests (PostgreSQL, Neo4j, Qdrant, API, MCP, LangGraph parity)
         working-directory: backend
         run: pytest -q tests/integration tests/agent/test_agent.py::LangGraphParityTest
+      - name: Backup, verify and restore test (pg_dump / pg_restore into a scratch database)
+        env:
+          BACKUP_PASSPHRASE: ci-only-backup-passphrase
+        run: |
+          sudo apt-get install -y postgresql-client
+          python infrastructure/scripts/pg_backup.py backup --out-dir /tmp/fira-backups --passphrase-env BACKUP_PASSPHRASE --keep 3
+          archive=$(ls /tmp/fira-backups/fira_*.dump.enc | head -1)
+          python infrastructure/scripts/pg_backup.py verify "$archive" --passphrase-env BACKUP_PASSPHRASE
+          python infrastructure/scripts/pg_backup.py restore-test "$archive" --passphrase-env BACKUP_PASSPHRASE
+
+  performance-smoke:
+    # Advisory: a 10,000-transaction benchmark compared with the committed baseline using a very wide tolerance, because
+    # shared CI runners are noisy. It catches order-of-magnitude regressions, not 20% ones.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements-dev.txt}
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Benchmark and compare with docs/benchmarks/perf_baseline.json
+        working-directory: backend
+        run: python -m app.monitoring.benchmark --sizes 10000 --sample 100 --batch-rows 2000 --out /tmp/perf --compare ../docs/benchmarks/perf_baseline.json --tolerance 4.0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: performance-smoke, path: /tmp/perf.*}
 
   security:
     runs-on: ubuntu-latest

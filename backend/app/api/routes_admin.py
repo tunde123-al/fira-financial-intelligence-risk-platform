@@ -85,6 +85,9 @@ def approve_version(version_id: str = Path(pattern=r"^CFG-[A-Z0-9]{1,20}$"), c: 
         audit(c, p, "config_approve", "denied", "config", version_id, reason=str(e))
         raise HTTPException(409, str(e)) from None
     c.reload_risk_config(RiskConfig(**rec["config"]))
+    from app.monitoring import governance
+
+    governance.sync(c, p.user_id, "api:config_approve", str(rec.get("rationale") or "approved risk-config version")[:200])
     audit(c, p, "config_approve", "ok", "config", version_id)
     return {"version_id": version_id, "status": "active", "active_version": c.risk_config.version}
 

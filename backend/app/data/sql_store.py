@@ -174,6 +174,25 @@ SQL = {
     "counts": ("SELECT (SELECT count(*) FROM customers) AS customers, (SELECT count(*) FROM accounts) AS accounts, "
                "(SELECT count(*) FROM transactions) AS transactions, (SELECT count(*) FROM merchants) AS merchants, "
                "(SELECT count(*) FROM devices) AS devices"),
+    "active_customers": (
+        'SELECT a.customer_id FROM accounts a JOIN transactions t ON t.sender_account_id = a.account_id '
+        'WHERE t."timestamp" BETWEEN :start AND :end UNION '
+        'SELECT a.customer_id FROM accounts a JOIN transactions t ON t.receiver_account_id = a.account_id '
+        'WHERE t."timestamp" BETWEEN :start AND :end ORDER BY 1'),
+    "count_txn": 'SELECT count(*) AS n FROM transactions WHERE "timestamp" BETWEEN :start AND :end',
+    "known_txn_ids": "SELECT transaction_id AS id FROM transactions WHERE transaction_id = ANY(:ids)",
+    "account_statuses": "SELECT account_id, status FROM accounts WHERE account_id = ANY(:ids)",
+    "manifest": "SELECT manifest FROM dataset_manifest WHERE id = 1",
+    "latest_txn": 'SELECT max("timestamp") AS ts FROM transactions',
+    "known_device_ids": "SELECT device_id AS id FROM devices WHERE device_id = ANY(:ids)",
+    "known_merchant_ids": "SELECT merchant_id AS id FROM merchants WHERE merchant_id = ANY(:ids)",
+    "insert_txn": (
+        'INSERT INTO transactions (transaction_id, "timestamp", sender_account_id, receiver_account_id, merchant_id, '
+        "amount, currency, amount_usd, transaction_type, channel, country, latitude, longitude, device_id, "
+        "ip_address, status, external_counterparty) VALUES (:transaction_id, :timestamp, :sender_account_id, "
+        ":receiver_account_id, :merchant_id, :amount, :currency, :amount_usd, :transaction_type, :channel, :country, "
+        ":latitude, :longitude, :device_id, CAST(:ip_address AS inet), :status, :external_counterparty) "
+        "ON CONFLICT (transaction_id) DO NOTHING"),
     "inv_by_status": "SELECT status, count(*) AS n FROM investigations GROUP BY status",
     "risk_hist": ("SELECT width_bucket(risk_score, 0, 100, 5) AS b, count(*) AS n FROM investigations "
                   "WHERE risk_score IS NOT NULL GROUP BY 1 ORDER BY 1"),
@@ -202,11 +221,12 @@ def _utc_frame(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 
 
 class SqlStore:
-    def __init__(self, database_url: str, echo: bool = False):
+    def __init__(self, database_url: str, echo: bool = False, connect_timeout_s: int = 5):
         from sqlalchemy import create_engine
 
+        # connect_timeout: an unreachable database must fail startup in seconds, not minutes
         self.engine = create_engine(database_url, pool_pre_ping=True, pool_size=5, max_overflow=10,
-                                    echo=echo, future=True)
+                                    echo=echo, future=True, connect_args={"connect_timeout": connect_timeout_s})
         self._peer_cache: dict[tuple, dict[str, float]] = {}
         self._as_of: datetime | None = None
         self._lock = threading.RLock()
@@ -375,6 +395,48 @@ class SqlStore:
             "merchants": self._frame("g_merchants"),
             "alerts": _utc_frame(self._frame("g_alerts"), ["created_at"]),
         }
+
+    # ------------------------------------------------------- monitoring support
+    def active_customers(self, start: datetime | None, end: datetime | None) -> list[str]:
+        return [r["customer_id"] for r in self._rows("active_customers", start=start or FAR_PAST, end=end or FAR_FUTURE)]
+
+    def count_transactions(self, start: datetime | None, end: datetime | None) -> int:
+        return int((self._one("count_txn", start=start or FAR_PAST, end=end or FAR_FUTURE) or {}).get("n", 0))
+
+    def known_transaction_ids(self, ids: list[str]) -> set[str]:
+        return {r["id"] for r in self._rows("known_txn_ids", ids=list(ids))} if ids else set()
+
+    def known_device_ids(self, ids: list[str]) -> set[str]:
+        return {r["id"] for r in self._rows("known_device_ids", ids=list(ids))} if ids else set()
+
+    def known_merchant_ids(self, ids: list[str]) -> set[str]:
+        return {r["id"] for r in self._rows("known_merchant_ids", ids=list(ids))} if ids else set()
+
+    def account_statuses(self, account_ids: list[str]) -> dict[str, str]:
+        return {r["account_id"]: r["status"] for r in self._rows("account_statuses", ids=list(account_ids))} \
+            if account_ids else {}
+
+    def dataset_manifest(self) -> dict[str, Any]:
+        return dict((self._one("manifest") or {}).get("manifest") or {})
+
+    def latest_transaction_time(self) -> datetime | None:
+        return (self._one("latest_txn") or {}).get("ts")
+
+    def ingest_transactions(self, df: pd.DataFrame) -> int:
+        """Insert already-validated rows (see `app.monitoring.ingest`) in one transaction."""
+        if df.empty:
+            return 0
+        from sqlalchemy import text
+
+        rows = []
+        for r in df.reindex(columns=TXN_FRAME_COLUMNS).to_dict("records"):
+            rows.append({k: (None if (v is None or (isinstance(v, float) and v != v) or v is pd.NaT) else v)
+                         for k, v in r.items()})
+        with self.engine.begin() as conn:
+            conn.execute(text(SQL["insert_txn"]), rows)
+        with self._lock:
+            self._as_of = None
+        return len(rows)
 
     # ------------------------------------------------------------ alerts etc.
     def list_alerts(self, entity_id: str | None = None, status: str | None = None,

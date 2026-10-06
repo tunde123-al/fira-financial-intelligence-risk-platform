@@ -39,6 +39,13 @@ SIGNAL_PLAYBOOK: dict[str, dict[str, str]] = {
     "FAN_IN": {
         "query": "account receives transfers from many unrelated senders fan-in mule",
         "action": "Review the senders of inbound funds and their relationship to the subject."},
+    "FAN_OUT": {
+        "query": "funds sent to many different beneficiaries fan-out distribution of funds mule",
+        "action": "Identify the beneficiaries and whether they are connected to each other or to flagged customers."},
+    "STRUCTURING": {
+        "query": "structuring transactions just below the reporting threshold split deposits smurfing",
+        "action": "Review the near-threshold transactions together against the customer's stated activity; any "
+                  "reporting decision requires authorised human approval."},
     "GEO_NEW_COUNTRY": {
         "query": "transactions in a new country travel notification unusual geography",
         "action": "Check for travel notifications and whether the foreign transactions used the customer's usual device."},

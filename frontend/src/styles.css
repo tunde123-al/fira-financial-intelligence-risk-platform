@@ -137,3 +137,7 @@ td code { display: inline-block; max-width: 380px; }
   .bar-row { grid-template-columns: 110px 1fr 70px; }
 }
 .who .badge { background: #1e293b; color: #e2e8f0; }
+
+ul.plain { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.flow-wrap { overflow-x: auto; }
+button.link { background: none; border: none; color: var(--accent); padding: 0; cursor: pointer; text-decoration: underline; }

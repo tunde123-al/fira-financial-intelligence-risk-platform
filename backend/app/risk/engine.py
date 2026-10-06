@@ -24,17 +24,20 @@ import pandas as pd
 
 from app.analytics.geo import detect_impossible_travel
 from app.analytics.stats import (
+    band_window_stats,
     inbound_counterparties,
     jensen_shannon,
     max_count_in_window,
+    outbound_counterparties,
     pass_through,
     period_stats,
     split_customer_frame,
 )
 from app.data.store import DataStore, utcnow
 from app.graph.base import GraphBackend
+from app.risk.catalog import CATEGORIES, category_of
 from app.risk.config import RiskConfig, SignalConfig
-from app.risk.models import Contribution, EvidenceRef, NotEvaluated, RiskAssessment, RiskSignal
+from app.risk.models import CategoryPoints, Contribution, EvidenceRef, NotEvaluated, RiskAssessment, RiskSignal
 
 
 class EntityNotFound(LookupError):
@@ -94,6 +97,8 @@ class RiskEngine:
             ("PEER_AMOUNT_DEVIATION", self._peer_amount),
             ("RAPID_PASS_THROUGH", self._pass_through),
             ("FAN_IN", self._fan_in),
+            ("FAN_OUT", self._fan_out),
+            ("STRUCTURING", self._structuring),
             ("GEO_NEW_COUNTRY", self._new_country),
             ("IMPOSSIBLE_TRAVEL", self._impossible_travel),
             ("NEW_DEVICE", self._new_device),
@@ -174,7 +179,8 @@ class RiskEngine:
             score=score, band=self.config.band(score),
             flagged=score >= self.config.score.investigation_threshold,
             investigation_threshold=self.config.score.investigation_threshold,
-            contributors=contributions, signals=signals, not_evaluated=not_eval, metrics=metrics,
+            contributors=contributions, category_breakdown=self.category_breakdown(contributions, score),
+            signals=signals, not_evaluated=not_eval, metrics=metrics,
             baseline=ctx.base_stats, window=ctx.win_stats, data_quality=dq,
             config_version=self.config.version, config_fingerprint=self.config.fingerprint(),
             computed_at=utcnow(), window_start=ctx.window_start, window_end=ctx.window_end,
@@ -202,6 +208,20 @@ class RiskEngine:
         total = min(self.config.score.cap, sum(c.points for c in contribs))
         contribs.sort(key=lambda c: -c.points)
         return contribs, round(total, 1)
+
+    def category_breakdown(self, contribs: list[Contribution], total: float) -> list[CategoryPoints]:
+        """Capped points per detector category; a `cap_adjustment` row appears if the global cap bit."""
+        by_cat: dict[str, CategoryPoints] = {}
+        for c in contribs:
+            cat = category_of(c.signal_type)
+            cp = by_cat.setdefault(cat, CategoryPoints(category=cat, label=CATEGORIES.get(cat, cat), points=0.0))
+            cp.points = round(cp.points + c.points, 2)
+            cp.signals.append(c.signal_type)
+        out = sorted(by_cat.values(), key=lambda x: -x.points)
+        adj = round(total - sum(x.points for x in out), 2)
+        if abs(adj) >= 0.05:
+            out.append(CategoryPoints(category="cap_adjustment", label="Global score cap", points=adj))
+        return out
 
     # -------------------------------------------------------------- utilities
     def _signal(self, ctx: _Ctx, name: str, sc: SignalConfig, observed: float | str, baseline: Any,
@@ -341,6 +361,59 @@ class RiskEngine:
                 f"from baseline; threshold {thr:.1f}. {len(internal_senders)} are accounts at this institution.")
         return self._signal(ctx, "FAN_IN", sc, obs, round(base_rate, 2), round(thr, 2), "counterparties", s, desc,
                             refs, {"internal_sender_accounts": internal_senders[:50]})
+
+    def _fan_out(self, ctx: _Ctx, sc: SignalConfig):
+        types = list(sc.p("transaction_types", ["transfer"]))
+        cps = outbound_counterparties(ctx.win.outbound, types)
+        obs = int(cps.nunique())
+        days = max((ctx.window_end - ctx.window_start).days, 1)
+        base_rate = ctx.base_stats["distinct_outbound_per_30d"] * days / 30
+        thr = max(float(sc.p("min_counterparties", 8)), base_rate * float(sc.p("baseline_multiplier", 3.0)))
+        self._metric("FAN_OUT", obs, thr, baseline=base_rate)
+        if obs < thr:
+            return None
+        s = strength(obs, thr, self._ramp(sc))
+        o = ctx.win.outbound
+        sent = o[(o.status == "completed") & o.transaction_type.isin(types)].sort_values("timestamp")
+        desc = (f"Funds were sent to {obs} distinct beneficiaries in the window versus an expected {base_rate:.1f} "
+                f"from baseline; threshold {thr:.1f}.")
+        return self._signal(ctx, "FAN_OUT", sc, obs, round(base_rate, 2), round(thr, 2), "beneficiaries", s, desc,
+                            self._txn_refs(sent, "outbound transfer", 12),
+                            {"beneficiaries": sorted(cps.unique().tolist())[:50]})
+
+    def _structuring(self, ctx: _Ctx, sc: SignalConfig):
+        thr_usd = float(sc.p("reporting_threshold_usd", 10000))
+        lo = thr_usd * float(sc.p("lower_ratio", 0.8))
+        hours = float(sc.p("window_hours", 24))
+        min_count = int(sc.p("min_count", 3))
+        min_total = thr_usd * float(sc.p("min_total_ratio", 1.0))
+        types = list(sc.p("transaction_types", ["cash_withdrawal", "transfer", "deposit"]))
+
+        def band(frames: Any) -> pd.DataFrame:
+            # outbound payments of the customer plus inbound cash-type deposits (no sender)
+            o = frames.outbound
+            i = frames.inbound[frames.inbound.sender_account_id.isna()]
+            d = pd.concat([o, i])
+            d = d[(d.status == "completed") & d.transaction_type.isin(types)]
+            return d[(d.amount_usd >= lo) & (d.amount_usd < thr_usd)]
+
+        win, base = band(ctx.win), band(ctx.base)
+        n, total, at = band_window_stats(win, win.amount_usd, hours)
+        base_n, _, _ = band_window_stats(base, base.amount_usd, hours)
+        thr = max(float(min_count), base_n * float(sc.p("baseline_multiplier", 2.0)))
+        self._metric("STRUCTURING", n, thr, baseline=base_n, window_total_usd=round(total, 2))
+        if n < thr or total < min_total:
+            return None
+        s = strength(n, thr, self._ramp(sc))
+        end = at + pd.Timedelta(hours=hours)
+        inside = win[(win.timestamp >= at) & (win.timestamp <= end)].sort_values("timestamp")
+        desc = (f"{n} transactions of USD {_fmt(lo, 0)} to {_fmt(thr_usd, 0)} (just below the configured USD "
+                f"{_fmt(thr_usd, 0)} reporting threshold) within {hours:g} hours from {at:%Y-%m-%d %H:%M} UTC, "
+                f"totalling USD {_fmt(total)}; threshold {thr:g} transactions (baseline maximum {base_n}).")
+        return self._signal(ctx, "STRUCTURING", sc, n, base_n, round(thr, 2), "near-threshold transactions", s, desc,
+                            self._txn_refs(inside, "near threshold"),
+                            {"window_start": str(at), "window_hours": hours, "window_total_usd": round(total, 2),
+                             "reporting_threshold_usd": thr_usd})
 
     def _new_country(self, ctx: _Ctx, sc: SignalConfig):
         base_c = set(ctx.base_stats["countries"]) | {ctx.customer.country}

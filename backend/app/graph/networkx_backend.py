@@ -356,3 +356,199 @@ class NetworkXGraph:
 
     def customer_flags(self, customer_ids: list[str]) -> dict[str, bool]:
         return {c: bool(self.g.nodes.get(node_id("customer", c), {}).get("open_alert")) for c in customer_ids}
+
+    # ------------------------------------------------------- investigation queries (v2)
+    def _own_accounts(self, customer_id: str) -> list[str]:
+        c = node_id("customer", customer_id)
+        if c not in self.g:
+            return []
+        return sorted(split_node_id(a)[1] for a in self.g.successors(c) if self.g.nodes[a].get("kind") == "account")
+
+    def customer_counterparties(self, customer_id: str, degree: int = 1, since: datetime | None = None,
+                                limit: int = 100) -> list[dict[str, Any]]:
+        """Accounts that exchanged transfers with the customer (degree 1) or with those accounts (degree 2).
+
+        Only account-to-account transfers exist in the projection; external beneficiaries are not nodes.
+        """
+        since_e = _epoch(since)
+        own = set(self._own_accounts(customer_id))
+        if not own:
+            return []
+        found: dict[str, dict[str, Any]] = {}
+
+        def add(acc: str, deg: int, direction: str, edge: dict[str, Any], via: str | None) -> None:
+            cur = found.get(acc)
+            if cur is None:
+                found[acc] = {"account_id": acc, "owner_customer_id": self.account_owner(acc), "degree": deg,
+                              "direction": direction, "n_transactions": int(edge.get("n", 0)),
+                              "total_usd": float(edge.get("total_usd", 0.0)), "via_account": via}
+            elif cur["degree"] == deg:
+                cur["n_transactions"] += int(edge.get("n", 0))
+                cur["total_usd"] = round(cur["total_usd"] + float(edge.get("total_usd", 0.0)), 2)
+                if cur["direction"] != direction:
+                    cur["direction"] = "both"
+
+        for a in own:
+            n = node_id("account", a)
+            for m in self.g.successors(n):
+                if self._transfer_ok(n, m, since_e) and split_node_id(m)[1] not in own:
+                    add(split_node_id(m)[1], 1, "out", self.g.edges[n, m], None)
+            for m in self.g.predecessors(n):
+                if (self.g.nodes[m].get("kind") == "account" and self._transfer_ok(m, n, since_e)
+                        and split_node_id(m)[1] not in own):
+                    add(split_node_id(m)[1], 1, "in", self.g.edges[m, n], None)
+        if degree >= 2:
+            first = [k for k, v in found.items() if v["degree"] == 1]
+            for a in first:
+                if len(found) >= limit * 3:
+                    break
+                n = node_id("account", a)
+                if self._is_hub(n):
+                    continue
+                for m in self.g.successors(n):
+                    acc = split_node_id(m)[1]
+                    if self._transfer_ok(n, m, since_e) and acc not in own and acc not in found:
+                        add(acc, 2, "out", self.g.edges[n, m], a)
+                for m in self.g.predecessors(n):
+                    acc = split_node_id(m)[1]
+                    if (self.g.nodes[m].get("kind") == "account" and self._transfer_ok(m, n, since_e)
+                            and acc not in own and acc not in found):
+                        add(acc, 2, "in", self.g.edges[m, n], a)
+        out = sorted(found.values(), key=lambda r: (r["degree"], -r["total_usd"], r["account_id"]))
+        return out[:limit]
+
+    def shared_beneficiaries(self, customer_id: str, since: datetime | None = None, min_other: int = 1,
+                             limit: int = 50) -> list[dict[str, Any]]:
+        """Beneficiary accounts the customer pays that are also paid by other customers."""
+        since_e = _epoch(since)
+        own = set(self._own_accounts(customer_id))
+        out: list[dict[str, Any]] = []
+        for a in own:
+            n = node_id("account", a)
+            for ben in self.g.successors(n):
+                if not self._transfer_ok(n, ben, since_e):
+                    continue
+                ben_id = split_node_id(ben)[1]
+                if ben_id in own:
+                    continue
+                others: dict[str, dict[str, Any]] = {}
+                for src in self.g.predecessors(ben):
+                    src_id = split_node_id(src)[1]
+                    if src == n or src_id in own or self.g.nodes[src].get("kind") != "account":
+                        continue
+                    if not self._transfer_ok(src, ben, since_e):
+                        continue
+                    owner = self.account_owner(src_id) or src_id
+                    d = others.setdefault(owner, {"customer_id": owner, "accounts": [], "n_transactions": 0,
+                                                  "total_usd": 0.0})
+                    d["accounts"].append(src_id)
+                    d["n_transactions"] += int(self.g.edges[src, ben].get("n", 0))
+                    d["total_usd"] = round(d["total_usd"] + float(self.g.edges[src, ben].get("total_usd", 0.0)), 2)
+                if len(others) >= min_other:
+                    out.append({"beneficiary_account": ben_id, "beneficiary_owner": self.account_owner(ben_id),
+                                "paid_from": a, "n_other_customers": len(others),
+                                "customers": sorted(others.values(), key=lambda d: -d["total_usd"])[:20]})
+        out.sort(key=lambda r: (-r["n_other_customers"], r["beneficiary_account"]))
+        return out[:limit]
+
+    def common_recipients(self, account_ids: list[str], min_sources: int = 2, since: datetime | None = None,
+                          limit: int = 50) -> list[dict[str, Any]]:
+        """Accounts that receive funds from at least `min_sources` of the given (for example flagged) accounts."""
+        since_e = _epoch(since)
+        src_set = {node_id("account", a) for a in account_ids if node_id("account", a) in self.g}
+        counts: dict[str, dict[str, Any]] = {}
+        for s in src_set:
+            for m in self.g.successors(s):
+                if m in src_set or not self._transfer_ok(s, m, since_e):
+                    continue
+                d = counts.setdefault(m, {"sources": [], "total_usd": 0.0, "n_transactions": 0})
+                d["sources"].append(split_node_id(s)[1])
+                d["total_usd"] = round(d["total_usd"] + float(self.g.edges[s, m].get("total_usd", 0.0)), 2)
+                d["n_transactions"] += int(self.g.edges[s, m].get("n", 0))
+        rows = [{"account_id": split_node_id(m)[1], "owner_customer_id": self.account_owner(split_node_id(m)[1]),
+                 "sources": sorted(d["sources"]), "n_sources": len(d["sources"]), "total_usd": d["total_usd"],
+                 "n_transactions": d["n_transactions"]}
+                for m, d in counts.items() if len(d["sources"]) >= min_sources]
+        rows.sort(key=lambda r: (-r["n_sources"], -r["total_usd"], r["account_id"]))
+        return rows[:limit]
+
+    # ------------------------------------------------------- money-mule investigation queries (v3)
+    def fan_patterns(self, since: datetime | None = None, min_degree: int = 5, limit: int = 50) -> list[dict[str, Any]]:
+        """Accounts with many distinct transfer senders (fan-in) or many distinct receivers (fan-out)."""
+        since_e = _epoch(since)
+        rows: list[dict[str, Any]] = []
+        for n, kind in self.g.nodes(data="kind"):
+            if kind != "account":
+                continue
+            senders = [m for m in self.g.predecessors(n)
+                       if self.g.nodes[m].get("kind") == "account" and self._transfer_ok(m, n, since_e)]
+            receivers = [m for m in self.g.successors(n)
+                         if self.g.nodes[m].get("kind") == "account" and self._transfer_ok(n, m, since_e)]
+            if len(senders) < min_degree and len(receivers) < min_degree:
+                continue
+            acc = split_node_id(n)[1]
+            owner = self.account_owner(acc)
+            in_usd = sum(float(self.g.edges[m, n].get("total_usd", 0.0)) for m in senders)
+            out_usd = sum(float(self.g.edges[n, m].get("total_usd", 0.0)) for m in receivers)
+            pattern = ("fan_in+fan_out" if len(senders) >= min_degree and len(receivers) >= min_degree
+                       else "fan_in" if len(senders) >= min_degree else "fan_out")
+            rows.append({"account_id": acc, "owner_customer_id": owner, "pattern": pattern,
+                         "distinct_senders": len(senders), "distinct_receivers": len(receivers),
+                         "in_usd": round(in_usd, 2), "out_usd": round(out_usd, 2),
+                         "flagged": bool(owner and self.customer_flags([owner]).get(owner))})
+        rows.sort(key=lambda r: (-(r["distinct_senders"] + r["distinct_receivers"]), r["account_id"]))
+        return rows[:limit]
+
+    def flow_subgraph(self, customer_id: str, depth: int = 2, since: datetime | None = None, max_nodes: int = 60,
+                      max_edges: int = 250) -> dict[str, Any]:
+        """Account-to-account transfer neighbourhood of a customer: nodes with their depth and role, edges with
+        amount, count and first/last time. Hubs are not expanded. Bounded; `truncated` says when a bound was hit."""
+        since_e = _epoch(since)
+        own = self._own_accounts(customer_id)
+        if not own:
+            return {"nodes": [], "edges": [], "truncated": False}
+        depth_of: dict[str, int] = {node_id("account", a): 0 for a in own}
+        role: dict[str, set[str]] = {n: {"subject"} for n in depth_of}
+        edges: dict[tuple[str, str], dict[str, Any]] = {}
+        frontier, truncated = list(depth_of), False
+        for d in range(1, depth + 1):
+            nxt: list[str] = []
+            for n in frontier:
+                if d > 1 and self._is_hub(n):
+                    continue
+                for direction in ("out", "in"):
+                    it = self.g.successors(n) if direction == "out" else self.g.predecessors(n)
+                    for m in it:
+                        u, v = (n, m) if direction == "out" else (m, n)
+                        if self.g.nodes[m].get("kind") != "account" or not self._transfer_ok(u, v, since_e):
+                            continue
+                        if m not in depth_of:
+                            if len(depth_of) >= max_nodes:
+                                truncated = True
+                                continue
+                            depth_of[m] = d
+                            role[m] = {"downstream" if direction == "out" else "upstream"}
+                            nxt.append(m)
+                        elif depth_of[m] == d:
+                            role[m].add("downstream" if direction == "out" else "upstream")
+                        if (u, v) not in edges:
+                            if len(edges) >= max_edges:
+                                truncated = True
+                                continue
+                            e = self.g.edges[u, v]
+                            edges[(u, v)] = {"source": split_node_id(u)[1], "target": split_node_id(v)[1],
+                                             "total_usd": float(e.get("total_usd", 0.0)), "n": int(e.get("n", 0)),
+                                             "first_ts": e.get("first_ts"), "last_ts": e.get("last_ts"),
+                                             "depth": d, "direction": direction,
+                                             "sample_txn_ids": list(e.get("sample_txn_ids") or [])[:3]}
+            frontier = nxt
+        owners = {n: self.account_owner(split_node_id(n)[1]) for n in depth_of}
+        flags = self.customer_flags(sorted({o for o in owners.values() if o}))
+        nodes = [{"account_id": split_node_id(n)[1], "owner_customer_id": owners[n], "depth": depth_of[n],
+                  "roles": sorted(role[n]), "flagged": bool(owners[n] and flags.get(owners[n] or "")),
+                  "is_hub": self._is_hub(n),
+                  "in_degree": sum(1 for m in self.g.predecessors(n) if self._transfer_ok(m, n, since_e)),
+                  "out_degree": sum(1 for m in self.g.successors(n) if self._transfer_ok(n, m, since_e))}
+                 for n in sorted(depth_of, key=lambda x: (depth_of[x], x))]
+        return {"nodes": nodes, "edges": sorted(edges.values(), key=lambda e: (e["depth"], -e["total_usd"])),
+                "truncated": truncated}

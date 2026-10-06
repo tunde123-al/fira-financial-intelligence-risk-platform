@@ -79,15 +79,11 @@ class FrameStore:
         tx = tx[TXN_FRAME_COLUMNS]
         self.tx = tx
         self.acc_owner = self.accounts.set_index("account_id").customer_id
-        # transaction index by account for fast lookups
-        self._by_sender = tx.groupby("sender_account_id").indices
-        self._by_receiver = tx.groupby("receiver_account_id").indices
-        self._by_device = tx.groupby("device_id").indices
+        self._reindex_transactions()
         self._cust = self.customers.set_index("customer_id", drop=False)
         self._acc = self.accounts.set_index("account_id", drop=False)
         self._mer = self.merchants.set_index("merchant_id", drop=False)
         self._dev = self.devices.set_index("device_id", drop=False)
-        self._txi = tx.set_index("transaction_id", drop=False)
         self.alerts = alerts
         self._lock = threading.RLock()
         self._investigations: dict[str, Investigation] = {}
@@ -108,6 +104,15 @@ class FrameStore:
         self._evals: list[dict[str, Any]] = []
         self._users: dict[str, dict[str, Any]] = {}
         self._peer_cache: dict[tuple, dict[str, float]] = {}
+
+    def _reindex_transactions(self) -> None:
+        """(Re)build the per-account / per-device position indices after the frame changed."""
+        tx = self.tx
+        self._by_sender = tx.groupby("sender_account_id").indices
+        self._by_receiver = tx.groupby("receiver_account_id").indices
+        self._by_device = tx.groupby("device_id").indices
+        self._txi = tx.set_index("transaction_id", drop=False)
+        self._peer_cache = {}
 
     # ------------------------------------------------------------------ basics
     def as_of(self) -> datetime:
@@ -283,6 +288,48 @@ class FrameStore:
             "merchants": self.merchants[["merchant_id", "name", "category", "risk_profile", "country"]].copy(),
             "alerts": self.alerts[["entity_id", "entity_type", "status", "created_at"]].copy(),
         }
+
+    # ------------------------------------------------------- monitoring support
+    def active_customers(self, start: datetime | None, end: datetime | None) -> list[str]:
+        df = self._window(self.tx, start, end)
+        accs = pd.concat([df.sender_account_id.dropna(), df.receiver_account_id.dropna()]).unique()
+        return sorted(self.acc_owner.reindex(accs).dropna().unique().tolist())
+
+    def count_transactions(self, start: datetime | None, end: datetime | None) -> int:
+        return int(len(self._window(self.tx, start, end)))
+
+    def known_transaction_ids(self, ids: list[str]) -> set[str]:
+        return {i for i in ids if i in self._txi.index}
+
+    def known_device_ids(self, ids: list[str]) -> set[str]:
+        return {i for i in ids if i in self._dev.index}
+
+    def known_merchant_ids(self, ids: list[str]) -> set[str]:
+        return {i for i in ids if i in self._mer.index}
+
+    def account_statuses(self, account_ids: list[str]) -> dict[str, str]:
+        s = self._acc["status"].reindex([a for a in account_ids if a]).dropna()
+        return {str(k): str(v) for k, v in s.items()}
+
+    def dataset_manifest(self) -> dict[str, Any]:
+        return dict(self.manifest)
+
+    def latest_transaction_time(self) -> datetime | None:
+        if self.tx.empty:
+            return None
+        return pd.Timestamp(self.tx["timestamp"].max()).to_pydatetime(warn=False)
+
+    def ingest_transactions(self, df: pd.DataFrame) -> int:
+        """Append already-validated rows (see `app.monitoring.ingest`). Returns the rows added."""
+        if df.empty:
+            return 0
+        with self._lock:
+            add = df.reindex(columns=TXN_FRAME_COLUMNS).copy()
+            add["timestamp"] = pd.to_datetime(add["timestamp"], utc=True)
+            self.tx = pd.concat([self.tx, add], ignore_index=True).sort_values(
+                "timestamp", kind="mergesort").reset_index(drop=True)
+            self._reindex_transactions()
+        return int(len(df))
 
     # ------------------------------------------------------------ alerts etc.
     def list_alerts(self, entity_id: str | None = None, status: str | None = None,

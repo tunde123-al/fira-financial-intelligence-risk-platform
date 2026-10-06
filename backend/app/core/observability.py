@@ -27,11 +27,16 @@ _CTX_VARS = {"request_id": request_id_var, "user_id": user_id_var, "investigatio
              "agent_run_id": agent_run_id_var}
 
 
+SERVICE_NAME = "fira-api"
+_ENVIRONMENT = "development"
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": record.levelname, "logger": record.name, "msg": record.getMessage(),
+            "level": record.levelname, "service": SERVICE_NAME, "env": _ENVIRONMENT, "logger": record.name,
+            "msg": record.getMessage(),
         }
         for k, var in _CTX_VARS.items():
             v = var.get()
@@ -45,7 +50,10 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: str = "INFO") -> None:
+def configure_logging(level: str = "INFO", environment: str | None = None) -> None:
+    global _ENVIRONMENT
+    if environment:
+        _ENVIRONMENT = environment
     root = logging.getLogger()
     if any(isinstance(h.formatter, JsonFormatter) for h in root.handlers):
         root.setLevel(level)

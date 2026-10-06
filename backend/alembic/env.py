@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import os
 
-from alembic import context
 from sqlalchemy import create_engine
+
+from alembic import context
+from app.config import normalize_database_url
 
 config = context.config
 
 
 def run_migrations_online() -> None:
-    url = os.environ.get("DATABASE_URL")
+    url = normalize_database_url(os.environ.get("DATABASE_URL"))
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
     engine = create_engine(url)
@@ -21,7 +23,7 @@ def run_migrations_online() -> None:
 
 
 def run_migrations_offline() -> None:
-    context.configure(url=os.environ.get("DATABASE_URL", "postgresql://"), literal_binds=True)
+    context.configure(url=normalize_database_url(os.environ.get("DATABASE_URL", "postgresql://")), literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
 

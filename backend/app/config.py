@@ -11,10 +11,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_ROOT.parent
+
+
+def normalize_database_url(url: str | None) -> str | None:
+    """Managed PostgreSQL services hand out `postgres://` or `postgresql://` URLs; SQLAlchemy needs the driver."""
+    if not url:
+        return url
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -43,6 +53,9 @@ class Settings(BaseModel):
     # offline evaluation and for tests that must run without infrastructure).
     data_backend: Literal["postgres", "frames"] = "postgres"
     database_url: str | None = None
+    # When set to a directory containing a built frontend (index.html), the API serves it at "/" so a
+    # single web service can host both (used by the public-demo deployment).
+    frontend_dist_dir: Path | None = None
     dataset_dir: Path = REPO_ROOT / "data" / "seeds"
 
     graph_backend: Literal["neo4j", "networkx"] = "networkx"
@@ -58,6 +71,7 @@ class Settings(BaseModel):
     documents_dir: Path = REPO_ROOT / "documents"
     model_dir: Path = REPO_ROOT / "data" / "models"
     risk_config_path: Path = BACKEND_ROOT / "app" / "risk" / "default_config.yaml"
+    monitoring_config_path: Path = BACKEND_ROOT / "app" / "monitoring" / "monitoring_config.yaml"
 
     # --- LLM ---------------------------------------------------------------
     llm_provider: Literal["none", "anthropic", "openai", "ollama"] = "none"
@@ -81,6 +95,12 @@ class Settings(BaseModel):
     cors_origins: str = "http://localhost:5173,http://localhost:8080"
     bootstrap_admin_password: str | None = None
     bootstrap_analyst_password: str | None = None
+    max_body_bytes: int = Field(default=5_000_000, ge=1_000, le=100_000_000)
+    db_connect_timeout_s: int = Field(default=5, ge=1, le=120)
+    enable_api_docs: bool | None = None  # None = on outside production, off in production
+    metrics_token: str | None = None  # optional scrape token for /metrics (Prometheus cannot send a JWT)
+    login_max_failures: int = Field(default=5, ge=1, le=100)
+    login_window_minutes: int = Field(default=15, ge=1, le=1440)
 
     # --- privacy -----------------------------------------------------------
     pii_masking: bool = True
@@ -95,9 +115,18 @@ class Settings(BaseModel):
 
     log_level: str = "INFO"
 
+    @field_validator("database_url")
+    @classmethod
+    def _driver(cls, v: str | None) -> str | None:
+        return normalize_database_url(v)
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.enable_api_docs if self.enable_api_docs is not None else not self.is_production
 
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -141,6 +170,12 @@ def load_settings() -> Settings:
         "cors_origins": _env("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080"),
         "bootstrap_admin_password": _env("BOOTSTRAP_ADMIN_PASSWORD"),
         "bootstrap_analyst_password": _env("BOOTSTRAP_ANALYST_PASSWORD"),
+        "max_body_bytes": _env_int("MAX_BODY_BYTES", 5_000_000),
+        "db_connect_timeout_s": _env_int("DB_CONNECT_TIMEOUT_S", 5),
+        "enable_api_docs": _env_bool("ENABLE_API_DOCS", False) if _env("ENABLE_API_DOCS") is not None else None,
+        "metrics_token": _env("METRICS_TOKEN"),
+        "login_max_failures": _env_int("LOGIN_MAX_FAILURES", 5),
+        "login_window_minutes": _env_int("LOGIN_WINDOW_MINUTES", 15),
         "pii_masking": _env_bool("PII_MASKING", True),
         "audit_retention_days": _env_int("AUDIT_RETENTION_DAYS", 365 * 5),
         "episode_retention_days": _env_int("EPISODE_RETENTION_DAYS", 365 * 2),
@@ -153,7 +188,9 @@ def load_settings() -> Settings:
         ("dataset_dir", "DATASET_DIR"),
         ("documents_dir", "DOCUMENTS_DIR"),
         ("model_dir", "MODEL_DIR"),
+        ("frontend_dist_dir", "FRONTEND_DIST_DIR"),
         ("risk_config_path", "RISK_CONFIG_PATH"),
+        ("monitoring_config_path", "MONITORING_CONFIG_PATH"),
     ):
         if _env(env_name):
             data[key] = Path(_env(env_name))  # type: ignore[arg-type]

@@ -11,9 +11,23 @@ import DocumentsPage from "./pages/Documents";
 import EvaluationPage from "./pages/Evaluation";
 import AuditPage from "./pages/Audit";
 import InvestigationsPage from "./pages/Investigations";
+import AlertsPage from "./pages/Alerts";
+import AlertDetailPage from "./pages/AlertDetail";
+import CasesPage from "./pages/Cases";
+import CaseWorkbenchPage from "./pages/CaseWorkbench";
+import MonitoringPage from "./pages/Monitoring";
+import DataQualityPage from "./pages/DataQuality";
+import MyWorkPage from "./pages/MyWork";
+import MuleFlowPage from "./pages/MuleFlow";
 
 const NAV: [string, string][] = [
   ["#/", "Dashboard"],
+  ["#/work", "My Work"],
+  ["#/alerts", "Alert Queue"],
+  ["#/cases", "Cases"],
+  ["#/monitoring", "Operations"],
+  ["#/data-quality", "Data Quality"],
+  ["#/mule", "Money-mule View"],
   ["#/search", "Investigation Search"],
   ["#/investigations", "Investigations"],
   ["#/graph", "Graph Explorer"],
@@ -86,6 +100,24 @@ export default function App() {
       break;
     case "investigations":
       page = id ? <InvestigationPage id={id} session={session} /> : <InvestigationsPage />;
+      break;
+    case "alerts":
+      page = id ? <AlertDetailPage id={id} session={session} /> : <AlertsPage key={JSON.stringify(route.query)} session={session} initial={route.query} />;
+      break;
+    case "cases":
+      page = id ? <CaseWorkbenchPage id={id} session={session} /> : <CasesPage />;
+      break;
+    case "work":
+      page = <MyWorkPage session={session} />;
+      break;
+    case "data-quality":
+      page = <DataQualityPage />;
+      break;
+    case "mule":
+      page = <MuleFlowPage id={id} />;
+      break;
+    case "monitoring":
+      page = <MonitoringPage session={session} />;
       break;
     case "graph":
       page = <GraphExplorer kind={route.query.kind} id={route.query.id} />;

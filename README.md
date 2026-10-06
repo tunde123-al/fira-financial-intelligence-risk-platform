@@ -1,133 +1,179 @@
 # FIRA — Financial Intelligence & Risk
 
-FIRA is a **prototype** of a decision-support tool for financial-crime investigators, built as a
-portfolio project on **entirely synthetic data**. Given a customer, account, transaction or device it
-collects evidence, computes deterministic and explainable risk signals, analyses the relationship
-graph, retrieves relevant policy passages, recalls earlier cases, and drafts an investigation report.
-Every claim in the report cites stored evidence, and a human analyst then records a decision.
+> FIRA is a financial intelligence and risk investigation platform built using synthetic financial data. It
+> demonstrates transaction monitoring, explainable risk detection, alert generation and triage, investigation workflows,
+> graph analysis, hybrid evidence retrieval and auditability, together with production-oriented engineering practices
+> (data-quality accounting, observability, security hardening, backup and restore, failure testing, CI gates). It is a
+> **production-oriented prototype**: it is not a production banking system, is not regulatory-certified, has not been
+> operated in production and has not been validated on real data.
 
-It models the workflow of a bank's financial-crime investigations team (transaction-monitoring
-follow-up, mule and device-ring analysis). It is **not** a production AML or fraud system, has not
-been validated on real data, and its metrics must not be read as real-world detection performance.
+It models the workflow of a bank's financial-crime operations team:
 
-> **Decision boundary.** FIRA never freezes, closes or blocks accounts, never denies credit, never
-> files regulatory reports and never states that anyone committed a crime. The agent's final step
-> puts the investigation in `pending_review` for a human.
+```
+transactions → monitoring (deterministic detectors) → automatic alert → explainable risk score → case
+  → investigator workbench (transactions, network, documents, evidence) → decision → audit trail → KPIs
+```
 
-> **Alerts: read this first.** The alerts you see in the UI and in the `alerts` table are **seeded
-> synthetic legacy-rule alerts** that ship with the dataset so investigations have a starting queue.
-> **Automated creation of alerts from FIRA risk scores is not currently implemented.** FIRA's risk
-> engine scores investigation subjects on demand (API or agent) and does not write alerts.
+Nothing here has been validated on real data, the metrics must not be read as real-world detection performance, and
+no part of it has been deployed or security-reviewed (see [Limitations](#limitations)).
+
+> **Decision boundary.** FIRA never freezes, closes or blocks accounts, never denies credit, never files regulatory
+> reports and never states that anyone committed a crime. Alerts, scores and case states are created by deterministic
+> code; an LLM (off by default) can only draft narrative text from stored evidence. Every decision is made and
+> attributed to a human investigator.
+
+> **What "production-oriented" does and does not mean.** The engineering practices are present and tested on synthetic
+> data and a local PostgreSQL. It has **not** been deployed, load-tested at scale, security-reviewed by a third party or
+> given real data; RPO 24 h / RTO 1 h are *targets*, not measurements; CI has not run; the Render blueprint has not been
+> applied. See [Limitations](#limitations).
+
+> **Two kinds of alerts, kept apart.** *FIRA monitoring alerts* are created by FIRA's own detectors during a monitoring
+> run (`monitoring_alerts`). The *legacy seeded alerts* (table `alerts`, 265 open) are a synthetic upstream feed that
+> ships with the dataset; FIRA reads them as context but never writes them.
 
 ## Contents
 
 [Key capabilities](#key-capabilities) · [Architecture](#architecture) · [Technology stack](#technology-stack) ·
-[Data](#data) · [Risk engine](#risk-engine) · [Investigation workflow](#investigation-workflow) ·
-[AI / LLM](#ai--llm) · [Alerts](#alerts) · [Evaluation](#evaluation) · [Installation](#installation) ·
-[Testing](#testing) · [Demo](#demo) · [Screenshots](#screenshots) · [Security](#security) ·
-[Limitations](#limitations) · [Roadmap](#roadmap) · [License](#license)
+[Data](#data) · [Risk engine](#risk-engine) · [Monitoring, alerts and cases](#monitoring-alerts-and-cases) ·
+[Investigation workflow](#investigation-workflow) · [AI / LLM](#ai--llm) · [Evaluation](#evaluation) ·
+[Production-oriented engineering](#production-oriented-engineering) · [Performance](#performance) ·
+[Installation](#installation) · [Testing](#testing) · [Demo](#demo) ·
+[Screenshots](#screenshots) · [Deployment](#deployment) · [Security](#security) · [Limitations](#limitations) ·
+[Roadmap](#roadmap) · [License](#license)
 
 ## Key capabilities
 
-- **Risk analysis:** 17 deterministic detectors (burst, velocity, amount deviation, rapid
-  pass-through, fan-in, impossible travel, device sharing, circular flow, dormant reactivation and
-  others) plus an optional Isolation-Forest anomaly signal. Scores are transparent: weight × strength,
-  group caps, YAML configuration.
-- **Investigation workflow:** a 14-node stateful workflow that gathers evidence through 22
-  permissioned tools and ends in `pending_review`.
-- **Graph intelligence:** account, device, merchant and identifier relationships; clusters, shared
-  devices, fund tracing, paths, cycles and centrality (NetworkX by default, optional Neo4j).
-- **Document retrieval:** parsing for Markdown, PDF (including OCR for scanned pages) and DOCX,
-  section-aware chunking, and hybrid retrieval (BM25 keyword + LSA semantic, fused with reciprocal
-  rank fusion) with provenance.
-- **Evidence grounding:** every claim cites evidence (`E1`, `E2`, …); a validator checks that cited
-  evidence exists and that numbers, dates and ids match it.
-- **Human review:** analysts confirm, reject, escalate or request more evidence; decisions feed a
-  failure-analysis and controlled configuration-improvement loop (proposal → offline regression →
-  four-eyes approval).
-- **Audit logging:** logins, tool calls, agent runs and decisions are recorded with request ids. In
-  PostgreSQL mode the table is protected from update/delete by database triggers.
-- **RBAC and privacy:** JWT authentication, `analyst` / `admin` roles, PII masking at the API
-  boundary, rate limiting. See [Security](#security) for what is *not* implemented.
-- **Interfaces:** FastAPI REST API (OpenAPI at `/docs`), a React + TypeScript investigator UI, and an
-  MCP server.
+- **Transaction monitoring:** validated transaction ingestion and monitoring runs that screen customers with the
+  deterministic detectors and create alerts automatically.
+- **Explainable risk detection:** 19 deterministic detectors (burst, velocity, amount deviation, structuring, rapid
+  pass-through, fan-in, fan-out, impossible travel, device sharing, circular flow, dormant reactivation and others) plus
+  an optional Isolation-Forest signal. Scores are weight × strength with group caps, broken down by category, with
+  the supporting transactions and a plain-language explanation. Configuration in YAML.
+- **Data quality and coverage:** every incoming batch passes a validation gate (22 reason codes); rejected rows are
+  quarantined with a sanitised copy and can be drilled into; a batch ledger enforces `received = processed + rejected +
+  failed`; coverage, processing success, late, duplicate and missing counts are computed from stored values, never
+  invented.
+- **Explainable alert triage:** a deterministic 0-100 heuristic (12 documented factors, CRITICAL/HIGH/MEDIUM/LOW bands)
+  stored with its factor breakdown; explicitly **not a probability**. Investigators get a "My Work" queue with overdue
+  flags, and operational alert-quality metrics that use only valid denominators (no false-positive *rate* from alerts).
+- **Money-mule indicators:** eight evidence-backed indicators (fan-in, fan-out, rapid movement, low retention, new or
+  dormant account, shared device, flagged network, onward chain) with a flow graph; worded as risk indicators, never as
+  proof.
+- **Alert management:** deduplicated alerts with a lifecycle (NEW → TRIAGED → INVESTIGATING → ESCALATED → RESOLVED with
+  CLEARED / FALSE_POSITIVE / CONFIRMED_SUSPICIOUS), queue filters, search, sorting, assignment, history.
+- **Case management and workbench:** cases with their own state machine, notes, evidence, timeline and investigator
+  decisions; one workbench screen with profile, risk, rules, transactions, 1 h / 24 h / 7 d / 30 d activity,
+  counterparties, network, related alerts, retrieved documents and evidence.
+- **Graph intelligence:** account, device, merchant and identifier relationships; clusters, shared devices, fund
+  tracing, paths, cycles, direct and second-degree counterparties, shared beneficiaries (NetworkX by default, Neo4j
+  optional for the original queries).
+- **Document retrieval:** Markdown, PDF (including OCR for scanned pages) and DOCX; section-aware chunking; hybrid
+  retrieval (BM25 + LSA, reciprocal rank fusion) with provenance.
+- **Evidence grounding:** every claim cites evidence; evidence is classified as database fact, rule result, graph
+  result, document evidence or (if an LLM is enabled) AI-generated summary, which is never a source of fact.
+- **Investigation agent:** a 14-node stateful workflow over 22 permissioned tools that ends in `pending_review`.
+- **Human review and audit:** formal investigator decisions with mandatory reasons; an audit log of logins, tool calls,
+  alerts, cases, notes, evidence and decisions; database-enforced append-only history in PostgreSQL mode.
+- **Operations and recovery:** business metrics and readiness with schema revision, an append-only configuration change
+  log, login lockout and token revocation, production start-up checks, a least-privilege database role, `pg_dump`-based
+  backup with encryption, verification and a **tested restore**, and failure-mode tests.
+- **Evaluation and performance:** an independent labelled benchmark (precision, recall, F1, false-positive rate, PR-AUC,
+  alerts per 1,000 transactions, latency) and a reproducible performance benchmark.
+- **Operations:** JWT authentication, `analyst` / `admin` roles, PII masking, rate limiting, structured logs,
+  `/health` and `/ready`, migrations, Docker Compose, a Render blueprint (not deployed), GitHub Actions workflow.
+- **Interfaces:** FastAPI REST API (OpenAPI at `/docs`), a React + TypeScript investigator UI, an MCP server.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
     subgraph clients[Clients]
-        UI["React + Vite investigator UI"]
-        MCP["MCP server (stdio, API-key roles)"]
+        UI["React + Vite investigator UI<br/>alert queue, cases, workbench"]
+        MCP["MCP server (stdio)"]
     end
 
-    subgraph api[API layer]
-        API["FastAPI<br/>JWT auth, RBAC, rate limit,<br/>PII masking, request ids"]
+    API["FastAPI<br/>JWT auth, RBAC, rate limit,<br/>PII masking, request ids"]
+
+    subgraph monitoring[Transaction monitoring]
+        ING["Ingestion<br/>validation, rejected-row report"]
+        MON["Monitoring run<br/>screens customers with activity"]
+        ALR["Alert generation<br/>tiers, deduplication, lifecycle"]
+        CAS["Cases<br/>notes, evidence, decisions"]
     end
 
     subgraph agent[Investigation workflow]
-        WF["14-node workflow<br/>LangGraph or built-in runner<br/>deterministic plan"]
-        VAL["Claim validator<br/>evidence citations"]
+        WF["14-node workflow<br/>LangGraph or built-in runner"]
+        VAL["Claim validator"]
         LLM["LLM provider<br/>optional, default: none<br/>narrative drafting only"]
     end
 
-    REG["Tool registry: 22 tools<br/>input schema, role check, timeout"]
+    REG["Tool registry: 22 tools<br/>role check, timeout"]
 
     subgraph analytics[Analytics]
-        RISK["Risk engine<br/>17 detectors + optional<br/>Isolation Forest"]
+        RISK["Risk engine<br/>19 detectors + optional<br/>Isolation Forest"]
         GRAPH["Graph backend<br/>NetworkX (default)<br/>Neo4j (optional)"]
-        DOCS["Document pipeline<br/>parse, chunk, embed (LSA)"]
         RET["Hybrid retrieval<br/>BM25 + LSA + RRF"]
         VEC["Vector index<br/>in-memory (default)<br/>Qdrant (optional)"]
     end
 
     subgraph store["System of record (one of the two)"]
-        FS["FrameStore: pandas, in-memory<br/>local default, state lost on restart"]
-        PG["PostgreSQL<br/>Docker mode, persistent<br/>audit_log append-only triggers"]
+        FS["FrameStore: pandas, in-memory<br/>local default, lost on restart"]
+        PG["PostgreSQL, persistent<br/>alerts, cases, audit_log<br/>append-only triggers"]
     end
 
-    SEED["Synthetic generator<br/>data/seeds (csv.gz + labels)"]
+    SEED["Synthetic generator<br/>data/seeds + labels"]
     CORPUS["documents/<br/>fictional policy corpus"]
-    HUMAN["Human analyst decision<br/>confirm / reject / escalate / more evidence"]
+    HUMAN["Investigator<br/>CLEARED / FALSE_POSITIVE /<br/>CONFIRMED_SUSPICIOUS / ESCALATED"]
 
-    SEED -->|loaded into| FS
-    SEED -->|loader / bootstrap| PG
-    CORPUS --> DOCS --> VEC
+    SEED -->|loaded into| store
+    CORPUS --> RET
+    RET --> VEC
     UI -->|HTTPS + JWT| API
     MCP --> REG
-    API --> REG
+    API -->|admin: batch or run| ING
+    ING --> store
+    ING --> MON
+    API --> MON
+    MON --> RISK
+    RISK -->|reads| store
+    GRAPH -. projection built from store .-> store
+    MON --> ALR
+    ALR -->|alerts, events| store
+    HUMAN -->|assign, triage, decide| API
+    API --> ALR
+    API --> CAS
+    CAS -->|case, notes, evidence| store
+    CAS --> WF
     API --> WF
     WF --> REG
     WF --> VAL
     WF -.->|optional| LLM
     REG --> RISK
     REG --> GRAPH
-    REG --> RET --> VEC
-    RISK -->|reads| store
-    GRAPH -. projection built from store .-> store
-    REG -->|investigations, evidence, audit_log| store
-    WF -->|ends in pending_review| HUMAN
-    HUMAN -->|POST decision| API
+    REG --> RET
+    ALR -->|every action audited| store
+    CAS -->|every action audited| store
 ```
 
-*Solid arrows are the default local path; "optional" components are off by default. FrameStore and
-PostgreSQL are alternatives (`DATA_BACKEND=frames|postgres`), not used together. The diagram is
-derived from `backend/app` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed data
-flow).*
+*Solid arrows are the default local path; "optional" components are off by default. FrameStore and PostgreSQL are
+alternatives (`DATA_BACKEND=frames|postgres`), not used together. Detection, scoring, alert creation and every state
+change are deterministic code; the LLM only appears on the narrative path. The diagram is derived from `backend/app`;
+see [docs/TRANSACTION_MONITORING_ARCHITECTURE.md](docs/TRANSACTION_MONITORING_ARCHITECTURE.md) for the monitoring design
+(state machines, deduplication policy, schema) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the original data flow.*
 
 ## Technology stack
 
 | Area | Technology |
 |---|---|
 | Backend | Python 3.11+ (CI on 3.12), FastAPI, Pydantic v2, Uvicorn |
-| Database | PostgreSQL 15+ (schema in `backend/app/db/schema.sql`, Alembic migrations 0001–0002, optional PostGIS layer); pandas-based in-memory `FrameStore` for local use |
+| Database | PostgreSQL 15+ (schema in `backend/app/db/schema.sql`, Alembic migrations 0001–0003, optional PostGIS layer); pandas-based in-memory `FrameStore` for local use |
 | Risk | Deterministic detectors in `backend/app/risk`, YAML configuration, scikit-learn Isolation Forest (optional) |
 | Graph | NetworkX (default); Neo4j 5 backend (optional) |
 | Retrieval | LSA embeddings (scikit-learn), BM25 / PostgreSQL full-text, reciprocal rank fusion; in-memory vector index or Qdrant (optional) |
 | Agent workflow | LangGraph (a built-in runner with identical semantics is used if LangGraph is absent); optional LLM providers over plain HTTP (Anthropic, OpenAI, Ollama) |
 | Frontend | React 19, TypeScript, Vite |
-| Testing | pytest + pytest-cov, ruff, mypy, bandit; `tsc` and a Vite build for the frontend (there are no frontend unit tests) |
-| Deployment | Docker Compose (PostgreSQL/PostGIS, Neo4j, Qdrant, backend, nginx frontend); GitHub Actions workflow |
+| Testing | pytest + pytest-cov, ruff, mypy, bandit, pip-audit; Vitest (workflow helpers only), `tsc`, a Vite build and `npm audit` for the frontend |
+| Deployment | Docker Compose (PostgreSQL/PostGIS, Neo4j, Qdrant, backend, nginx frontend); Render blueprint for a single-service synthetic demo (not deployed); GitHub Actions workflow |
 
 ## Data
 
@@ -145,18 +191,74 @@ real institution or customer.
 | Source documents | 12 registered: 11 files in `documents/` (Markdown, PDF, scanned PDF, DOCX; a fictional institution, "Lagoon Bank Plc") plus one generated "historical case notes" document built from the seeded investigations |
 | Indexed chunks | 272 in the verified run (the unit the vector index and the dashboard's "indexed chunks" count). This was measured **without** the Tesseract OCR binary installed, so the scanned PDF memo yielded no chunks and the ingest report lists a warning for it. With Tesseract installed (the Docker image installs it) the count is higher |
 
-The generator and the detectors were designed together. See [Evaluation](#evaluation).
+The generator and the detectors were designed together. For the monitoring evaluation a separate benchmark
+generator produces independent banks with new scenarios, evasive positives and ambiguous negatives. See
+[Evaluation](#evaluation).
 
 ## Risk engine
 
-For one customer and a lookback window (default 30 days against a 90-day baseline) the engine
-computes window and baseline statistics identically, runs each detector, and turns every detector
-that crosses its threshold into a signal with the observed value, baseline, threshold and the
-transaction ids behind it. Points are `weight × strength`, where strength is 0.5 at the threshold and
-rises linearly to 1.0. Correlated signals share a group cap, and the total is capped at 100.
-Thresholds and weights live in [`default_config.yaml`](backend/app/risk/default_config.yaml) and are
-**engineering defaults, not regulatory values and not calibrated on real data.** No LLM is involved.
-Details: [docs/RISK_ENGINE.md](docs/RISK_ENGINE.md).
+For one customer and a lookback window (default 30 days against a 90-day baseline) the engine computes window and
+baseline statistics identically, runs each detector, and turns every detector that crosses its threshold into a signal
+with the observed value, baseline, threshold and the transaction ids behind it. Points are `weight × strength`, where
+strength is 0.5 at the threshold and rises linearly to 1.0. Correlated signals share a group cap, and the total is
+capped at 100. The API breaks the score down by category (transaction behaviour, fund flow, geographic, device and
+identity, network, history, anomaly model). **There is no customer-profile or document component in the score**:
+documents are retrieved as context only.
+
+Version 2 added two detectors, STRUCTURING (near-threshold transactions inside a rolling window, using an *illustrative*
+USD 10,000 threshold) and FAN_OUT, which moves the risk configuration to `default-2`. Thresholds and weights live in
+[`default_config.yaml`](backend/app/risk/default_config.yaml) and are **engineering defaults, not regulatory values and not
+calibrated on real data.** No LLM is involved. Details: [docs/RISK_ENGINE.md](docs/RISK_ENGINE.md).
+
+## Monitoring, alerts and cases
+
+**Monitoring run.** An admin (API/UI) or the CLI starts a run: customers with recent activity are assessed with the
+risk engine and each triggered detector may create an alert. Runs are started on demand; there is no continuous or
+scheduled monitoring yet. `POST /api/monitoring/transactions` ingests a batch through the data-quality gate (bad rows are
+quarantined with reason codes, never silently dropped) and can monitor the affected customers immediately.
+
+**Which detectors alert.** *Standalone* typology detectors (structuring, circular flow, mule patterns, burst, impossible
+travel, device sharing, dormant reactivation, high-risk merchant) alert on their own. *Supporting* detectors that
+compare a customer with their own baseline (new device, new country, unusual amount, volume spike) alert only when the
+customer's combined score reaches the investigation threshold. *Context* signals (history, network exposure, behavioural
+shift, ML) never alert. On the dev benchmark, letting every detector alert gave a 17.6% false-positive rate instead of
+0.5% (see [Evaluation](#evaluation)).
+
+**Deduplication.** At most one unresolved alert per customer and detector (enforced by a unique index in PostgreSQL): a
+repeat detection merges into it (count, transactions, highest score); behaviour whose transactions were already resolved
+is suppressed; genuinely new behaviour creates a new alert. Re-running monitoring is idempotent.
+
+**Lifecycle.**
+
+```
+alert:  NEW → TRIAGED → INVESTIGATING → ESCALATED → RESOLVED  (CLEARED | FALSE_POSITIVE | CONFIRMED_SUSPICIOUS)
+case:   OPEN → INVESTIGATING ⇄ PENDING_REVIEW,  INVESTIGATING → ESCALATED,  decision → CLOSED
+```
+
+Resolving or escalating needs a written reason; only the assignee (or an admin) may act on an item; a closing case
+decision resolves its alerts and records the equivalent decision on a linked investigation. Details and the exact
+policies: [docs/TRANSACTION_MONITORING_ARCHITECTURE.md](docs/TRANSACTION_MONITORING_ARCHITECTURE.md).
+
+## Production-oriented engineering
+
+What was added after the monitoring workflow, and where to read the evidence. Everything is on synthetic data.
+
+| Capability | What exists | Read |
+|---|---|---|
+| Data-quality layer | validation gate, quarantine, batch ledger, coverage and success from real values, Data Quality page | [PRODUCTION_ORIENTED_ARCHITECTURE](docs/PRODUCTION_ORIENTED_ARCHITECTURE.md) §14 |
+| Alert triage and quality | 12-factor heuristic, bands, outcome feedback, confirmation / false-discovery / closure rates, `not_computed` for FPR and recall | [ALERT_QUALITY](docs/ALERT_QUALITY.md) |
+| Money-mule view | indicators, score, bands, flow graph, fan-in/fan-out search, benign context notes | [EVALUATION](docs/EVALUATION.md) Part 1b |
+| Case management | state machine, assignment rules, priority change with reason, My Work queue, real-timestamp timeline | [API](docs/API.md) |
+| Configuration governance | append-only change log, startup diff, allow-listed audited overrides, detector switch | [SECURITY](docs/SECURITY.md#configuration-governance) |
+| Observability | JSON logs with service/operation/duration, business gauges, readiness with schema revision | [DEPLOYMENT](docs/DEPLOYMENT.md#operations) |
+| Security hardening | lockout, logout revocation, body limit, production checks, least-privilege role, scans | [SECURITY](docs/SECURITY.md) |
+| Backup and recovery | backup / verify / restore / restore-test scripts, restored-app check, failure scenarios | [DISASTER_RECOVERY](docs/DISASTER_RECOVERY.md) |
+| Performance | latency, throughput, memory, index before/after, regression baseline | [PERFORMANCE](docs/PERFORMANCE.md) |
+| Acceptance | a scripted end-to-end run over real HTTP | [ACCEPTANCE_TEST](docs/ACCEPTANCE_TEST.md) |
+
+Two corrections made along the way are worth knowing about: a v2 dashboard KPI called "false-positive rate" was really a
+share of resolved alerts and was renamed; and the first triage design failed its own evaluation (worse than the customer
+risk score it was built on) and was revised once before a holdout run.
 
 ## Investigation workflow
 
@@ -164,13 +266,13 @@ Details: [docs/RISK_ENGINE.md](docs/RISK_ENGINE.md).
 signal → evidence → graph → documents → investigation → human review
 ```
 
-1. A request such as "Investigate CUST-10686 over the last 30 days" is parsed for the subject.
-2. A fixed plan runs tools: profile, transactions, window-vs-baseline statistics, risk signals,
-   graph cluster / shared devices / fund tracing, policy retrieval per fired signal, and previous
-   cases.
+1. A request such as "Investigate CUST-10686 over the last 30 days" is parsed for the subject (from a case, the
+   workbench runs this for the case's customer).
+2. A fixed plan runs tools: profile, transactions, window-vs-baseline statistics, risk signals, graph cluster / shared
+   devices / fund tracing, policy retrieval per fired signal, and previous cases.
 3. Evidence fusion stores each tool output as a numbered evidence item.
 4. The report is assembled; claims are validated; the investigation becomes `pending_review`.
-5. An analyst records a decision, which is stored with the investigation and the agent run.
+5. An investigator records a decision, which is stored with the investigation and the agent run.
 
 ## AI / LLM
 
@@ -187,25 +289,34 @@ signal → evidence → graph → documents → investigation → human review
   match the cited evidence; accusatory language and unattended action directives are rejected; one
   retry, then a deterministic fallback. The validator is rule-based, so it checks grounding, not
   reasoning quality.
-- **Final decisions remain with human review.** No AI output changes an investigation's conclusion.
+- **Final decisions remain with human review.** No AI output changes an investigation's conclusion. Alert creation,
+  scoring, deduplication and the alert and case state machines contain no model at all.
 - FIRA has **not** been validated as a production AI or AML system.
-
-## Alerts
-
-Current alerts are seeded synthetic/legacy alerts used to support investigation workflows.
-Automated creation of alerts from FIRA risk scores is not currently implemented.
-
-- *Seeded legacy alerts* (table `alerts`, shown on the dashboard) are loaded with the dataset. A
-  subset are attached to suspicious customers and many are noise, so the first open alert may score
-  0 in FIRA's own assessment.
-- *FIRA risk assessment* (`GET /api/risk/{entity_type}/{entity_id}`, the agent) independently
-  evaluates a subject with the configurable detectors. Results are stored inside investigations, not
-  as alerts.
 
 ## Evaluation
 
-The benchmark scores the engine against the generator's ground-truth labels. Committed result files
-are in [`evaluation/results/`](evaluation/results).
+> **Everything here is measured on synthetic data whose scenarios were written by the same authors as the detectors.
+> None of it is evidence of real-world AML or fraud detection performance.**
+
+**Transaction-monitoring pipeline (v2).** An independent labelled benchmark with its own seeds, evasive positives that
+the detectors are not designed to catch, and ambiguous negatives. A customer is positive if monitoring raised any alert.
+Shipped thresholds; none tuned on these datasets.
+
+| | Dev (seed 2025, 4,000 customers) | Holdout (seed 7, 3,000 customers) |
+|---|---|---|
+| Precision / recall / F1 | 0.858 / 0.865 / 0.861 | 0.878 / 0.860 / 0.869 |
+| False-positive rate | 0.0049 | 0.0041 |
+| PR-AUC (no-skill 0.033) | 0.859 | 0.855 |
+| Alerts per 1,000 transactions | 20.1 | 19.7 |
+| Detection time per customer (mean, p95) | 110 ms, 156 ms | 103 ms, 127 ms |
+
+How to read it: every missed positive is an *evasive* scenario that fails by construction, every scenario the detectors
+were designed for was alerted, and most false positives are deliberately ambiguous cases (a first-ever payroll run looks
+like fan-out). Letting every detector alert (no tiers) gives precision 0.161 and a 17.6% false-positive rate on the dev
+seed. The alert-tier design was influenced by an earlier smoke run on the same generator (disclosed in
+[docs/EVALUATION.md](docs/EVALUATION.md), together with the limitations and reproduction commands).
+
+**Original risk benchmark (risk configuration `default-1`, kept unchanged).**
 
 | | dev (seed 42, 10k customers) | holdout (seed 7, 5k customers) |
 |---|---|---|
@@ -214,111 +325,28 @@ are in [`evaluation/results/`](evaluation/results).
 | ROC AUC | 0.998 | 0.999 |
 | Hybrid retrieval R@5 / MRR (25 queries) | 0.947 / 0.953 | same corpus |
 
-> **Do not read these as real-world performance.** The data is synthetic, and the detectors,
-> scenarios and thresholds were co-designed, so the benchmark largely measures whether the engine
-> finds what the generator planted. The "holdout" uses a different seed, not different generating
-> logic. Some signals are weak even here (for example HISTORICAL_ALERTS precision 0.32,
-> AMOUNT_DEVIATION 0.64). These numbers are not evidence of AML or fraud detection performance on
-> real data. See [docs/EVALUATION.md](docs/EVALUATION.md) for the caveats and for how real labelled
-> data would have to be used.
+These come from data designed alongside the detectors (the benchmark largely measures whether the engine finds what the
+generator planted), and some signals are weak even there (for example HISTORICAL_ALERTS precision 0.32). A re-run on
+2026-10-03 on another machine (ML model untrained, Tesseract absent) gave recall 0.882 and hybrid R@5 0.933: close but not
+identical, so treat the numbers as environment-dependent.
 
-**Reproduction check.** Re-running the full benchmark on 2026-10-03 on the machine above (`python -m app.evaluation.runner all --per-scenario 0 --agent-sample 3`, default seed-42 dataset, ML anomaly model **not** trained, Tesseract **not** installed) gave precision 0.991, recall 0.882, F1 0.933, FPR 0.0052, AUC 0.998 and hybrid retrieval R@5 0.933 / MRR 0.953. That is close to, but not identical with, the committed run (recall 0.890, F1 0.938, R@5 0.947). The untrained ML signal and the un-indexed scanned PDF are plausible causes, but this was not isolated. Treat the numbers as environment-dependent.
+**Production-oriented additions (v3, holdout seed 7, independent benchmark with a money-mule family).** Customer-level detection:
+precision 0.838, recall 0.829, FPR 0.0073. Triage priority tracks oracle-confirmed rate monotonically (CRITICAL 100%, HIGH 98%, MEDIUM 82%) but is **not**
+a better ranking than the customer risk score (AUC 0.83 vs 0.92). The money-mule score ranks well (AUC 0.97) but its MEDIUM-or-above cut-off
+has precision 0.54 / recall 0.57, below the existing fan-in / rapid-pass-through alerts (F1 0.56 vs 0.72). The first triage design failed its own
+evaluation and was revised once on the development seed before the holdout was run; all of it is in [docs/EVALUATION.md](docs/EVALUATION.md) Part 1b and
+[docs/ALERT_QUALITY.md](docs/ALERT_QUALITY.md). FPR and recall are not computed from the alert workflow because it has no verified true negatives.
 
-## Installation
+## Performance
 
-There are two modes. Pick one:
-
-| | Frames mode | Docker / PostgreSQL mode |
-|---|---|---|
-| Storage | pandas, in-memory | PostgreSQL (persistent), Neo4j and Qdrant optional |
-| Infrastructure needed | none | Docker |
-| Persistence | **None.** Users, investigations, evidence, decisions and the audit trail are lost when the API restarts | Yes (named volumes) |
-| Audit append-only triggers | Not applicable (no database) | Yes, via migration 0002 |
-| Intended use | Simple local demos, development, tests, offline benchmarks | Anything that must survive a restart |
-
-The API reads **environment variables only** (it does not load a `.env` file; `.env` is used by
-Docker Compose). In Frames mode set the variables in the shell that starts the API. Use your own
-passwords: nothing is created without them.
-
-### Linux / macOS (Frames mode)
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements-dev.txt
-(cd frontend && npm ci)
-
-# dataset and document index (or: make generate ingest)
-cd backend
-python -m app.synthetic.generator --out ../data/seeds --customers 10000
-export DATA_BACKEND=frames DATASET_DIR=../data/seeds MODEL_DIR=../data/models
-python -m app.documents.pipeline ingest
-python -m app.risk.ml train --sample 2000        # optional: enables the ML anomaly signal
-
-export FIRA_ENV=development
-export BOOTSTRAP_ADMIN_PASSWORD='choose-a-password'      # at least 10 characters
-export BOOTSTRAP_ANALYST_PASSWORD='choose-another-one'   # at least 10 characters
-uvicorn app.main:app --port 8000                  # API (or: make api-local)
-
-# in a second terminal
-cd frontend && npm run dev                        # UI on http://localhost:5173
-```
-
-### Windows (PowerShell, Frames mode)
-
-`make` and `python3` are not assumed. Use the `py` launcher (Python 3.11 or newer) and Node.js 20+.
-
-```powershell
-# 1. virtual environment and dependencies
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1          # if blocked: Set-ExecutionPolicy -Scope Process Bypass
-pip install -r backend\requirements-dev.txt
-cd frontend; npm ci; cd ..
-
-# 2. synthetic dataset and document index
-cd backend
-python -m app.synthetic.generator --out ..\data\seeds --customers 10000
-$env:DATA_BACKEND = "frames"
-$env:DATASET_DIR  = "..\data\seeds"
-$env:MODEL_DIR    = "..\data\models"
-python -m app.documents.pipeline ingest
-python -m app.risk.ml train --sample 2000       # optional: enables the ML anomaly signal
-
-# 3. environment (this shell only; never commit real secrets)
-$env:FIRA_ENV = "development"
-$env:BOOTSTRAP_ADMIN_PASSWORD   = "choose-a-password"      # at least 10 characters
-$env:BOOTSTRAP_ANALYST_PASSWORD = "choose-another-one"     # at least 10 characters
-
-# 4. start the API
-uvicorn app.main:app --port 8000
-
-# 5. in a second PowerShell window: start the UI
-cd frontend; npm run dev                        # http://localhost:5173
-```
-
-Sign in as `analyst` or `admin` with the passwords you set. API docs: http://localhost:8000/docs.
-`JWT_SECRET` is optional in development (a random per-process secret is used and tokens die on
-restart); it is **required (32+ characters) when `FIRA_ENV=production`**.
-
-What was verified: the PowerShell steps (virtual environment activation, dataset generation, document ingest, ML training, setting `$env:` variables, starting the API, health check and sign-in) were executed in Windows PowerShell on Windows 10 with Python 3.13, using a reduced 300-customer dataset to save time. The frontend steps (`npm ci`, `npm run dev`, `npm run build`) were run with Node 22 from Git Bash. The Tesseract OCR binary is not installed by these steps; without it, scanned PDFs are ingested with no text (the ingest report prints a warning).
-
-### Docker / PostgreSQL mode
-
-```bash
-cp .env.example .env        # Windows: copy .env.example .env
-# edit .env: POSTGRES_PASSWORD, NEO4J_PASSWORD, JWT_SECRET (>=32 chars),
-#            BOOTSTRAP_ADMIN_PASSWORD, BOOTSTRAP_ANALYST_PASSWORD (>=10 chars)
-docker compose up --build
-```
-
-On first start the backend applies the migrations, generates and loads the synthetic dataset,
-projects the graph into Neo4j and indexes the documents into Qdrant (a few minutes). Then the UI is
-at http://localhost:8080 and the API docs at http://localhost:8000/docs. The stack needs about 5 GB of
-RAM. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
-To run only the API against your own PostgreSQL (without Neo4j and Qdrant), set `DATABASE_URL`
-(`postgresql+psycopg://…`), run `alembic upgrade head` in `backend/`, load the data with
-`python -m app.db.loader --dataset ../data/seeds --truncate`, and start the API with
-`DATA_BACKEND=postgres`.
+Measured on one 2012-era 4-core machine, single process, synthetic data, PostgreSQL 15 in Docker
+([docs/PERFORMANCE.md](docs/PERFORMANCE.md)). Risk assessment costs about 100 to 118 ms per customer regardless of bank size, so monitoring cost
+follows the number of customers screened: a daily batch of 1,153 active customers in a 251,346-transaction bank took 130 s in memory and
+155 s on PostgreSQL (about 7.5 to 9 customers per second). Alert-queue pages took 10 to 28 ms, the full case workbench 0.26 to 0.58 s,
+a money-mule assessment 0.12 to 0.15 s. After measuring, four partial indexes cut the investigator queries from 10 to 118 ms to 0.2 to 1 ms on
+300,000 synthetic alerts. The ingestion gate processes 240 to 960 rows/s with 10% invalid rows (slower as the bank grows because every accepted
+batch rebuilds the in-memory graph). Memory peaked at 677 MB (memory mode) and 806 MB (PostgreSQL) at 251k transactions. Sizes run: 10k, 100k and
+251k transactions; **1,000,000 was not run** because the machine could not hold it safely. A regression baseline is committed.
 
 ## Testing
 
@@ -331,13 +359,14 @@ python -m pytest -q                                                        # eve
 ruff check app tests
 mypy app
 bandit -c pyproject.toml -r app -ll
-cd ../frontend && npm run typecheck && npm run build                       # no frontend unit tests exist
+pip-audit -r requirements.txt
+cd ../frontend && npm ci && npm run typecheck && npm test && npm run build && npm audit
 ```
 
 | Suite | Needs |
 |---|---|
-| `tests/unit`, `tests/agent`, `tests/e2e` | nothing (in-process stack) |
-| `tests/integration` `PostgresStoreTest`, `AuditAppendOnlyTest`, `ApiStackTest` | PostgreSQL 15+ (`DATABASE_URL`) |
+| `tests/unit`, `tests/agent`, `tests/e2e` (detectors, alert generation, deduplication, lifecycle, cases, API and RBAC, data-quality gate, triage, alert quality, money-mule indicators, configuration governance, security hardening, failure modes, OpenAPI, label-leakage, evaluation metrics, deployment) | nothing (in-process stack) |
+| `tests/integration` `PostgresStoreTest`, `AuditAppendOnlyTest`, `ApiStackTest`, the monitoring workflow re-run on PostgreSQL, constraint, atomicity and ledger tests, failure modes (killed connections, restart, schema behind, bad migration), least-privilege role | PostgreSQL 15+ (`DATABASE_URL`; the monitoring tests create and drop their own databases, so the role needs `CREATEDB`) |
 | `tests/integration` Qdrant test | Qdrant (`QDRANT_URL`) |
 | `tests/integration` Neo4j test | Neo4j 5 (`NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`) |
 | `tests/agent/test_agent.py::LangGraphParityTest` | LangGraph installed |
@@ -345,29 +374,33 @@ cd ../frontend && npm run typecheck && npm run build                       # no 
 
 Service tests are skipped, not failed, when their service variable is unset.
 
-**Snapshot of the verified run (2026-10-03, Windows 10, Python 3.13; environment-specific, not a
-permanent guarantee):**
+**Snapshot of the verified run (2026-10-03, Windows 10, Python 3.13; environment-specific, not a permanent guarantee):**
 
 | Check | Result |
 |---|---|
-| `tests/unit tests/agent tests/e2e` | 80 passed, 1 skipped; 73% line coverage (6,221 statements) |
-| `tests/integration` + LangGraph parity against PostgreSQL 15 and Qdrant 1.12 (Docker containers) | 12 passed, 1 skipped |
-| Neo4j graph test | **NOT RUN**: Neo4j was not available in this environment, so the Neo4j backend is still untested here |
-| Full `docker compose` stack | **NOT RUN** |
-| GitHub Actions | **NOT RUN** (the repository had not been pushed) |
-| `ruff check app tests`, `mypy app` | clean |
+| `tests/unit tests/agent tests/e2e` | **282 passed, 1 skipped; 80% line coverage** (10,439 statements; the PostgreSQL repository code is exercised by the integration suite below). CI enforces a 75% floor |
+| `tests/integration` + LangGraph parity against PostgreSQL 15 (Docker container) | **69 passed, 2 skipped** (Neo4j and Qdrant not configured in this pass; the previous pass ran Qdrant 1.12 with 56 passed). Includes the monitoring workflow re-run on PostgreSQL, constraint, atomicity, append-only, ledger, failure-mode and least-privilege tests |
+| Vitest (`npm test`) | 23 passed |
+| Neo4j graph test, Qdrant test (this pass) | **NOT RUN**: the Neo4j image could not be pulled in this environment, so the Neo4j backend is still untested here; Qdrant was not started for the final pass |
+| End-to-end acceptance script against a live API and PostgreSQL (15 steps incl. backup and restore) | **15 of 15 passed**: [docs/ACCEPTANCE_TEST.md](docs/ACCEPTANCE_TEST.md) |
+| Backup, verify, restore test and restored-application check | passed (restore step 21 s on a 15,000-transaction database): [docs/DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) |
+| Full `docker compose` stack, `render.Dockerfile` build, Render deployment | **NOT RUN** |
+| GitHub Actions | **NOT RUN** (runs only after the repository is pushed) |
+| `ruff check`, `mypy` (105 files incl. the backup scripts) | clean |
 | `bandit -ll` | no medium or high severity issues |
 | `pip-audit -r backend/requirements.txt` | no known vulnerabilities (point-in-time; dependencies are unpinned) |
-| `npm run typecheck`, `npm run build` | pass |
+| `npm run typecheck`, `npm run build`, `npm audit` | pass; 0 vulnerabilities |
 
-CI (`.github/workflows/ci.yml`) is defined for lint, type check, unit tests with coverage,
-integration tests with service containers, bandit / pip-audit / a secret-pattern scan, and Docker
-image builds. It has **not run yet**, because it only executes once the repository is on GitHub.
+CI (`.github/workflows/ci.yml`) is defined for lint, type check, unit tests with a coverage floor, integration tests with
+service containers (migration up/down/up and a backup-restore step), an advisory performance smoke job, bandit / pip-audit / npm audit / a secret-pattern scan, the frontend build and tests, and Docker image
+builds. It has **not run yet**, because it only executes once the repository is on GitHub.
 
 ## Demo
 
-A guided 10-minute walkthrough on a verified synthetic subject is in [docs/DEMO.md](docs/DEMO.md).
-The customer ids it uses depend on the default seed dataset.
+[docs/DEMO.md](docs/DEMO.md) is a 15-minute walkthrough with verified values: run monitoring, ingest new transactions
+and watch a STRUCTURING alert appear, work it in the alert queue, create a case, use the workbench, record a decision,
+read the audit trail and the KPIs. `infrastructure/scripts/demo_api_walkthrough.py` performs the same flow against a running
+API. Customer ids in the guide depend on the default seed.
 
 ## Screenshots
 
@@ -375,43 +408,65 @@ All screenshots use synthetic data and no credentials.
 
 | | |
 |---|---|
-| ![Dashboard](docs/screenshots/01-dashboard.png) **Dashboard** | ![Investigation search](docs/screenshots/02-investigation-search.png) **Investigation search** |
-| ![Report](docs/screenshots/04-investigation-report.png) **Investigation workspace: report** | ![Risk signals](docs/screenshots/05-risk-signals.png) **Risk signals with evidence** |
-| ![Graph Explorer](docs/screenshots/09-graph-explorer.png) **Graph Explorer** | ![Document search](docs/screenshots/10-document-search.png) **Document search** |
-| ![Evidence](docs/screenshots/08-evidence.png) **Evidence items** | ![Audit log](docs/screenshots/11-audit-log.png) **Audit log** |
+| ![Dashboard](docs/screenshots/01-dashboard.png) **Dashboard with monitoring KPIs** | ![Alert queue](docs/screenshots/13-alert-queue.png) **Alert queue** |
+| ![Alert detail](docs/screenshots/14-alert-detail.png) **Alert explanation and history** | ![Case workbench](docs/screenshots/15-case-overview.png) **Case workbench: overview and risk** |
+| ![Rules](docs/screenshots/16-case-rules.png) **Triggered rules** | ![Network](docs/screenshots/18-case-network.png) **Transaction network** |
+| ![Evidence](docs/screenshots/19-case-evidence.png) **Classified evidence** | ![Decision](docs/screenshots/20-case-decision.png) **Investigator decision** |
+| ![Timeline](docs/screenshots/21-case-timeline.png) **Case timeline** | ![Audit](docs/screenshots/11-audit-log.png) **Audit log** |
+| ![Monitoring](docs/screenshots/12-monitoring.png) **Monitoring runs** | ![Investigation report](docs/screenshots/04-investigation-report.png) **Evidence-grounded report** |
+
+## Deployment
+
+A single-service public demo is described in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): `render.yaml` and
+`infrastructure/docker/render.Dockerfile` (FastAPI serving the built UI, PostgreSQL, no Neo4j/Qdrant/LLM).
+**Status: not deployed.** The blueprint and image have not been run on Render; what was verified locally is listed in that
+document. Docker Compose remains the full local stack.
 
 ## Security
 
 JWT authentication (HS256) with scrypt password hashing, role-based access control enforced at the
-API and tool layers, rate limiting, PII masking and an audit trail. This is a prototype that has not
-been security-reviewed or penetration-tested. Known gaps include no token revocation, no per-user
-lockout, a process-local rate limiter, and an audit log that is append-only but not tamper-proof.
+API and tool layers, rate limiting, login lockout, logout revocation, request-size limits, PII masking, an audit trail, an
+append-only configuration change log, production start-up checks and a least-privilege database role. This is a prototype that
+has not been security-reviewed or penetration-tested. Known gaps include lockout, revocation and rate limiting that are
+per process, no per-case confidentiality (any analyst can read any case), and an audit log and history tables that are
+append-only but not tamper-proof. `bandit`, `pip-audit`, `npm audit`, `ruff` and `mypy` were clean at the last run. How to report
+a vulnerability: [SECURITY.md](SECURITY.md).
 Full details and limitations: [docs/SECURITY.md](docs/SECURITY.md). No credentials are committed;
 `.env.example` lists the settings.
 
 ## Limitations
 
-- **Synthetic data only.** Nothing has been validated on real transactions, customers or policies.
-- **Seeded alerts.** Alerts are generated by the dataset, not by FIRA. There is no automated alert
-  creation from risk scores.
-- **Circular evaluation.** Detectors and generator were co-designed; metrics are not real-world
-  performance.
-- **Risk configuration is not calibrated.** Weights and thresholds are engineering defaults.
-- **No live LLM validation.** The LLM path has only run with scripted providers. The default workflow
-  uses no LLM.
-- **Frames mode is not durable.** Investigations, decisions, users and audit entries are in memory.
-- **Not exercised end to end:** the full Docker Compose stack and the GitHub Actions pipeline.
-  Neo4j-backed graph tests were not run in the last verification pass (see the test snapshot above).
-- **Scale.** The agent runs synchronously; the graph projection is rebuilt in full; there is no job
-  queue, partitioning or orchestration.
-- **No frontend tests**, no SSO/MFA, no token revocation.
-- "Lagoon Bank Plc" and its policy documents are fictional and do not reflect any real law or
-  regulation.
+- **Synthetic data only.** Nothing has been validated on real transactions, customers or policies. "Lagoon Bank Plc" and
+  its documents are fictional and reflect no real law or regulation; the USD 10,000 structuring threshold is illustrative.
+- **Circular evaluation.** Detectors, scenarios and thresholds were designed by the same people. The monitoring benchmark
+  adds evasive positives and ambiguous negatives, but they are our choices; metrics are not real-world performance. The
+  alert-tier design was influenced by a smoke run on the same generator.
+- **Monitoring is on demand.** There is no continuous or scheduled monitoring, no streaming ingestion and no job queue;
+  runs are synchronous and cost about 0.1 s per customer in one process.
+- **Uncalibrated configuration.** Weights, thresholds and alert tiers are engineering defaults. No unusual-balance-movement
+  detector exists (the data has no balance history).
+- **No live LLM validation.** The LLM path has only run with scripted providers; the default workflow uses no LLM.
+- **Frames mode is not durable.** Alerts, cases, notes, decisions, users and audit entries are in memory and have no rollback;
+  PostgreSQL mode adds persistence and per-operation transactions.
+- **Access control is coarse.** Two roles; assignment-based write access; any analyst can read any case; no four-eyes on
+  case decisions; token revocation and login lockout exist but are per process.
+- **Triage and the money-mule view are heuristics, tuned once on synthetic data.** Triage is not a probability and is not a
+  better ranking than the customer risk score it contains (holdout AUC 0.83 vs 0.92); the mule bands are not a better classifier
+  than the existing fan-in / rapid-pass-through alerts (holdout F1 0.56 vs 0.72). Neither has seen a real investigator.
+- **Recovery is a script, not a service.** Backups are not scheduled or stored off the host, there is no point-in-time recovery,
+  and RPO 24 h / RTO 1 h are targets. Only the restore step has been timed, on a 15,000-transaction database.
+- **A free hosting tier has no dependable backups.** Do not assume the Render demo is backed up.
+- **Not exercised end to end:** the full Docker Compose stack, the GitHub Actions pipeline and the Render deployment.
+  Neo4j-backed tests were not run in the last verification pass, and the new network queries are NetworkX-only.
+- **Scale and performance.** Measured only up to about 254k transactions on one small machine; ingestion rebuilds the graph
+  projection; queue latency with very many alerts is unmeasured. No partitioning or orchestration.
+- **Frontend tests are minimal:** unit tests for the workflow helpers; no component or browser tests.
 
 ## Roadmap
 
 See [docs/ROADMAP_AND_RISKS.md](docs/ROADMAP_AND_RISKS.md) for the executed roadmap, the verification
-status, the risk register and the not-yet-built items (alert creation from risk scores among them).
+status, the risk register and the not-yet-built items (continuous monitoring, an incremental graph projection, shared token
+revocation, scheduled off-host backups and per-case access control among them).
 
 ## License
 
@@ -419,20 +474,23 @@ Released under the [MIT License](LICENSE). Copyright (c) 2026 Tunde Shiyanbade.
 
 ## Further documentation
 
-[ARCHITECTURE](docs/ARCHITECTURE.md) · [DATA_MODEL](docs/DATA_MODEL.md) · [RISK_ENGINE](docs/RISK_ENGINE.md) ·
-[GRAPH_MODEL](docs/GRAPH_MODEL.md) · [RAG_ARCHITECTURE](docs/RAG_ARCHITECTURE.md) ·
-[AGENT_ARCHITECTURE](docs/AGENT_ARCHITECTURE.md) · [EVALUATION](docs/EVALUATION.md) ·
-[SECURITY](docs/SECURITY.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) · [API](docs/API.md) ·
-[DEMO](docs/DEMO.md)
+[TRANSACTION_MONITORING_ARCHITECTURE](docs/TRANSACTION_MONITORING_ARCHITECTURE.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
+[DATA_MODEL](docs/DATA_MODEL.md) · [RISK_ENGINE](docs/RISK_ENGINE.md) · [GRAPH_MODEL](docs/GRAPH_MODEL.md) ·
+[RAG_ARCHITECTURE](docs/RAG_ARCHITECTURE.md) · [AGENT_ARCHITECTURE](docs/AGENT_ARCHITECTURE.md) ·
+[EVALUATION](docs/EVALUATION.md) · [ALERT_QUALITY](docs/ALERT_QUALITY.md) · [PERFORMANCE](docs/PERFORMANCE.md) ·
+[SECURITY](docs/SECURITY.md) · [DISASTER_RECOVERY](docs/DISASTER_RECOVERY.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) ·
+[API](docs/API.md) · [DEMO](docs/DEMO.md) · [ACCEPTANCE_TEST](docs/ACCEPTANCE_TEST.md) ·
+[PRODUCTION_ORIENTED_ARCHITECTURE](docs/PRODUCTION_ORIENTED_ARCHITECTURE.md) · [ROADMAP_AND_RISKS](docs/ROADMAP_AND_RISKS.md)
 
 ```
-backend/app/        api, agents, analytics, risk, graph, retrieval, documents, memory, tools,
-                    security, evaluation, llm, mcp, data (stores), db (schema, loader), synthetic
+backend/app/        api, agents, analytics, risk, monitoring (alerts, cases, ingestion, benchmark), graph,
+                    retrieval, documents, memory, tools, security, evaluation, llm, mcp, data (stores),
+                    db (schema, loader), synthetic (generator, monitoring benchmark)
 backend/tests/      unit, agent, e2e, integration
 frontend/           React + TypeScript investigator UI (Vite)
 documents/          fictional policy corpus incl. PDF / scanned PDF / DOCX
-evaluation/         retrieval relevance judgements and committed benchmark results
+evaluation/         retrieval judgements and committed benchmark results (risk and monitoring)
 data/seeds          generated dataset (git-ignored)
-infrastructure/     Dockerfiles, nginx, scripts
+infrastructure/     Dockerfiles, nginx, scripts (backup/restore, acceptance test, index review), sql (least-privilege role)
 docs/               design documentation, demo guide, screenshots
 ```

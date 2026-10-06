@@ -1,0 +1,1038 @@
+{
+ "kind": "monitoring_performance",
+ "created_at": "2026-10-03T18:55:27.351955+00:00",
+ "sizes": [
+  10000,
+  100000,
+  250000
+ ],
+ "database": "PostgreSQL",
+ "environment": {
+  "python": "3.13.7",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "processor": "Intel64 Family 6 Model 58 Stepping 9, GenuineIntel",
+  "cpu_count": 4
+ },
+ "results": [
+  {
+   "target_transactions": 10000,
+   "customers": 394,
+   "transactions": 10446,
+   "dataset_generation_s": 2.4,
+   "backends": [
+    {
+     "backend": "frames (in-memory pandas)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 102.4,
+      "p50_ms": 99.63,
+      "p95_ms": 157.29,
+      "max_ms": 217.12
+     },
+     "daily_batch": {
+      "customers_screened": 43,
+      "transactions_in_scope": 38,
+      "alerts_created": 14,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 4.7,
+      "customers_per_second": 9.16,
+      "timing_ms": {
+       "risk_assessment": 4618,
+       "alert_generation": 70
+      },
+      "ms_per_customer": 109.21
+     },
+     "daily_batch_rerun": {
+      "duration_s": 4.65,
+      "alerts_created": 0,
+      "alerts_merged": 14,
+      "timing_ms": {
+       "risk_assessment": 4613,
+       "alert_generation": 34
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 4.772,
+      "rows_per_second": 1047.8
+     },
+     "queries": {
+      "alerts_in_store": 14,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 2.49,
+       "p50_ms": 2.42,
+       "p95_ms": 2.99,
+       "max_ms": 2.99
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 1.88,
+       "p50_ms": 1.63,
+       "p95_ms": 3.15,
+       "max_ms": 3.15
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 1.42,
+       "p50_ms": 1.32,
+       "p95_ms": 3.02,
+       "max_ms": 3.02
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 0.03,
+       "p50_ms": 0.02,
+       "p95_ms": 0.05,
+       "max_ms": 0.05
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 2.47,
+       "p50_ms": 2.36,
+       "p95_ms": 3.08,
+       "max_ms": 3.08
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.06,
+       "p50_ms": 0.05,
+       "p95_ms": 0.15,
+       "max_ms": 0.15
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 0.63,
+       "p50_ms": 0.61,
+       "p95_ms": 0.85,
+       "max_ms": 0.85
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 192.09,
+       "p50_ms": 193.5,
+       "p95_ms": 199.03,
+       "max_ms": 199.03
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 14,
+       "priority_changed": 0,
+       "ms": 9.3
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 124.09,
+       "p50_ms": 116.5,
+       "p95_ms": 178.45,
+       "max_ms": 186.07
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 0.54,
+       "p50_ms": 0.47,
+       "p95_ms": 0.91,
+       "max_ms": 1.04
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 5.51,
+       "p50_ms": 6.08,
+       "p95_ms": 6.35,
+       "max_ms": 6.35
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 0.18,
+       "p50_ms": 0.16,
+       "p95_ms": 0.32,
+       "max_ms": 0.32
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 3.24,
+       "p50_ms": 2.75,
+       "p95_ms": 5.16,
+       "max_ms": 5.16
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 0.36,
+       "p50_ms": 0.34,
+       "p95_ms": 0.62,
+       "max_ms": 0.62
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 2.08,
+       "rows_per_second": 961.7,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 394
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 240.4,
+       "peak_mb": 242.6
+      }
+     },
+     "load_and_graph_build_s": 4.64,
+     "load_rate_transactions_per_s": 2250.0
+    },
+    {
+     "backend": "postgresql 15 (SqlStore)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 116.74,
+      "p50_ms": 115.21,
+      "p95_ms": 157.3,
+      "max_ms": 262.27
+     },
+     "daily_batch": {
+      "customers_screened": 43,
+      "transactions_in_scope": 38,
+      "alerts_created": 14,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 8.99,
+      "customers_per_second": 4.78,
+      "timing_ms": {
+       "risk_assessment": 5610,
+       "alert_generation": 3326
+      },
+      "ms_per_customer": 209.05
+     },
+     "daily_batch_rerun": {
+      "duration_s": 8.68,
+      "alerts_created": 0,
+      "alerts_merged": 14,
+      "timing_ms": {
+       "risk_assessment": 5406,
+       "alert_generation": 3189
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 6.136,
+      "rows_per_second": 814.8
+     },
+     "queries": {
+      "alerts_in_store": 14,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 12.99,
+       "p50_ms": 11.19,
+       "p95_ms": 26.8,
+       "max_ms": 26.8
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 10.45,
+       "p50_ms": 10.22,
+       "p95_ms": 13.63,
+       "max_ms": 13.63
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 19.38,
+       "p50_ms": 17.4,
+       "p95_ms": 40.43,
+       "max_ms": 40.43
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 7.59,
+       "p50_ms": 7.49,
+       "p95_ms": 9.06,
+       "max_ms": 9.06
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 10.12,
+       "p50_ms": 10.08,
+       "p95_ms": 13.83,
+       "max_ms": 13.83
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.08,
+       "p50_ms": 0.06,
+       "p95_ms": 0.2,
+       "max_ms": 0.2
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 0.64,
+       "p50_ms": 0.62,
+       "p95_ms": 0.89,
+       "max_ms": 0.89
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 538.1,
+       "p50_ms": 543.47,
+       "p95_ms": 583.86,
+       "max_ms": 583.86
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 14,
+       "priority_changed": 0,
+       "ms": 838.1
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 186.19,
+       "p50_ms": 177.63,
+       "p95_ms": 260.21,
+       "max_ms": 306.32
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 2.64,
+       "p50_ms": 2.53,
+       "p95_ms": 3.46,
+       "max_ms": 3.69
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 4.87,
+       "p50_ms": 4.67,
+       "p95_ms": 6.08,
+       "max_ms": 6.08
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 9.19,
+       "p50_ms": 9.17,
+       "p95_ms": 10.98,
+       "max_ms": 10.98
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 5.34,
+       "p50_ms": 5.37,
+       "p95_ms": 6.18,
+       "max_ms": 6.18
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 15.04,
+       "p50_ms": 15.07,
+       "p95_ms": 16.87,
+       "max_ms": 16.87
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 3.14,
+       "rows_per_second": 636.9,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 394
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 263.4,
+       "peak_mb": 264.9
+      }
+     },
+     "bulk_load_s": 1.37,
+     "bulk_load_rows": 13546,
+     "bulk_load_transactions_per_s": 7651.0,
+     "container_and_graph_build_s": 0.55
+    }
+   ]
+  },
+  {
+   "target_transactions": 100000,
+   "customers": 3937,
+   "transactions": 101323,
+   "dataset_generation_s": 21.6,
+   "backends": [
+    {
+     "backend": "frames (in-memory pandas)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 105.72,
+      "p50_ms": 103.58,
+      "p95_ms": 144.84,
+      "max_ms": 253.69
+     },
+     "daily_batch": {
+      "customers_screened": 538,
+      "transactions_in_scope": 511,
+      "alerts_created": 32,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 61.38,
+      "customers_per_second": 8.77,
+      "timing_ms": {
+       "risk_assessment": 61179,
+       "alert_generation": 177
+      },
+      "ms_per_customer": 114.08
+     },
+     "daily_batch_rerun": {
+      "duration_s": 60.49,
+      "alerts_created": 0,
+      "alerts_merged": 32,
+      "timing_ms": {
+       "risk_assessment": 60373,
+       "alert_generation": 94
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 6.374,
+      "rows_per_second": 784.5
+     },
+     "queries": {
+      "alerts_in_store": 32,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 6.16,
+       "p50_ms": 6.04,
+       "p95_ms": 6.95,
+       "max_ms": 6.95
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 5.38,
+       "p50_ms": 4.98,
+       "p95_ms": 9.56,
+       "max_ms": 9.56
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 3.9,
+       "p50_ms": 3.1,
+       "p95_ms": 18.36,
+       "max_ms": 18.36
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 0.04,
+       "p50_ms": 0.03,
+       "p95_ms": 0.06,
+       "max_ms": 0.06
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 2.68,
+       "p50_ms": 2.68,
+       "p95_ms": 3.03,
+       "max_ms": 3.03
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.08,
+       "p50_ms": 0.07,
+       "p95_ms": 0.18,
+       "max_ms": 0.18
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 0.89,
+       "p50_ms": 0.86,
+       "p95_ms": 1.19,
+       "max_ms": 1.19
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 311.79,
+       "p50_ms": 292.86,
+       "p95_ms": 390.28,
+       "max_ms": 390.28
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 32,
+       "priority_changed": 0,
+       "ms": 22.7
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 118.65,
+       "p50_ms": 117.28,
+       "p95_ms": 154.82,
+       "max_ms": 158.75
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 0.58,
+       "p50_ms": 0.5,
+       "p95_ms": 1.2,
+       "max_ms": 1.34
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 67.2,
+       "p50_ms": 64.82,
+       "p95_ms": 77.75,
+       "max_ms": 77.75
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 0.18,
+       "p50_ms": 0.16,
+       "p95_ms": 0.28,
+       "max_ms": 0.28
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 6.23,
+       "p50_ms": 6.2,
+       "p95_ms": 6.67,
+       "max_ms": 6.67
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 0.34,
+       "p50_ms": 0.33,
+       "p95_ms": 0.4,
+       "max_ms": 0.4
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 3.744,
+       "rows_per_second": 534.2,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 3937
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 385.8,
+       "peak_mb": 414.4
+      }
+     },
+     "load_and_graph_build_s": 3.3,
+     "load_rate_transactions_per_s": 30671.0
+    },
+    {
+     "backend": "postgresql 15 (SqlStore)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 117.84,
+      "p50_ms": 117.7,
+      "p95_ms": 157.85,
+      "max_ms": 207.98
+     },
+     "daily_batch": {
+      "customers_screened": 538,
+      "transactions_in_scope": 511,
+      "alerts_created": 32,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 73.0,
+      "customers_per_second": 7.37,
+      "timing_ms": {
+       "risk_assessment": 67735,
+       "alert_generation": 5203
+      },
+      "ms_per_customer": 135.69
+     },
+     "daily_batch_rerun": {
+      "duration_s": 74.55,
+      "alerts_created": 0,
+      "alerts_merged": 32,
+      "timing_ms": {
+       "risk_assessment": 68519,
+       "alert_generation": 5938
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 8.645,
+      "rows_per_second": 578.3
+     },
+     "queries": {
+      "alerts_in_store": 32,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 20.0,
+       "p50_ms": 19.54,
+       "p95_ms": 24.52,
+       "max_ms": 24.52
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 16.2,
+       "p50_ms": 15.03,
+       "p95_ms": 26.47,
+       "max_ms": 26.47
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 36.36,
+       "p50_ms": 37.59,
+       "p95_ms": 53.45,
+       "max_ms": 53.45
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 62.76,
+       "p50_ms": 7.16,
+       "p95_ms": 286.13,
+       "max_ms": 286.13
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 9.72,
+       "p50_ms": 9.45,
+       "p95_ms": 11.68,
+       "max_ms": 11.68
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.09,
+       "p50_ms": 0.08,
+       "p95_ms": 0.19,
+       "max_ms": 0.19
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 0.85,
+       "p50_ms": 0.84,
+       "p95_ms": 1.01,
+       "max_ms": 1.01
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 602.03,
+       "p50_ms": 600.08,
+       "p95_ms": 631.12,
+       "max_ms": 631.12
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 32,
+       "priority_changed": 0,
+       "ms": 1998.3
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 165.72,
+       "p50_ms": 157.84,
+       "p95_ms": 253.63,
+       "max_ms": 303.42
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 2.65,
+       "p50_ms": 2.57,
+       "p95_ms": 3.32,
+       "max_ms": 3.37
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 72.09,
+       "p50_ms": 72.44,
+       "p95_ms": 72.83,
+       "max_ms": 72.83
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 9.79,
+       "p50_ms": 9.38,
+       "p95_ms": 14.56,
+       "max_ms": 14.56
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 9.81,
+       "p50_ms": 9.9,
+       "p95_ms": 10.61,
+       "max_ms": 10.61
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 20.66,
+       "p50_ms": 22.3,
+       "p95_ms": 28.16,
+       "max_ms": 28.16
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 5.074,
+       "rows_per_second": 394.2,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 3937
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 358.3,
+       "peak_mb": 465.4
+      }
+     },
+     "bulk_load_s": 10.61,
+     "bulk_load_rows": 130233,
+     "bulk_load_transactions_per_s": 9552.0,
+     "container_and_graph_build_s": 2.66
+    }
+   ]
+  },
+  {
+   "target_transactions": 250000,
+   "customers": 9843,
+   "transactions": 251346,
+   "dataset_generation_s": 54.6,
+   "backends": [
+    {
+     "backend": "frames (in-memory pandas)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 105.92,
+      "p50_ms": 105.56,
+      "p95_ms": 127.57,
+      "max_ms": 366.97
+     },
+     "daily_batch": {
+      "customers_screened": 1153,
+      "transactions_in_scope": 1079,
+      "alerts_created": 103,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 129.96,
+      "customers_per_second": 8.87,
+      "timing_ms": {
+       "risk_assessment": 129354,
+       "alert_generation": 572
+      },
+      "ms_per_customer": 112.71
+     },
+     "daily_batch_rerun": {
+      "duration_s": 129.04,
+      "alerts_created": 0,
+      "alerts_merged": 103,
+      "timing_ms": {
+       "risk_assessment": 128686,
+       "alert_generation": 318
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 9.018,
+      "rows_per_second": 554.4
+     },
+     "queries": {
+      "alerts_in_store": 103,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 8.83,
+       "p50_ms": 8.79,
+       "p95_ms": 9.86,
+       "max_ms": 9.86
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 8.74,
+       "p50_ms": 8.68,
+       "p95_ms": 9.49,
+       "max_ms": 9.49
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 4.91,
+       "p50_ms": 2.9,
+       "p95_ms": 43.21,
+       "max_ms": 43.21
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 0.07,
+       "p50_ms": 0.06,
+       "p95_ms": 0.13,
+       "max_ms": 0.13
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 2.45,
+       "p50_ms": 2.4,
+       "p95_ms": 2.91,
+       "max_ms": 2.91
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.28,
+       "p50_ms": 0.25,
+       "p95_ms": 0.4,
+       "max_ms": 0.4
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 1.03,
+       "p50_ms": 1.01,
+       "p95_ms": 1.69,
+       "max_ms": 1.69
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 225.68,
+       "p50_ms": 217.74,
+       "p95_ms": 262.01,
+       "max_ms": 262.01
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 103,
+       "priority_changed": 0,
+       "ms": 70.7
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 125.13,
+       "p50_ms": 116.38,
+       "p95_ms": 204.65,
+       "max_ms": 217.88
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 0.5,
+       "p50_ms": 0.44,
+       "p95_ms": 0.86,
+       "max_ms": 1.01
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 178.7,
+       "p50_ms": 175.95,
+       "p95_ms": 190.1,
+       "max_ms": 190.1
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 0.17,
+       "p50_ms": 0.16,
+       "p95_ms": 0.29,
+       "max_ms": 0.29
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 19.78,
+       "p50_ms": 19.69,
+       "p95_ms": 20.72,
+       "max_ms": 20.72
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 0.37,
+       "p50_ms": 0.36,
+       "p95_ms": 0.46,
+       "max_ms": 0.46
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 6.835,
+       "rows_per_second": 292.6,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 9843
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 621.2,
+       "peak_mb": 676.7
+      }
+     },
+     "load_and_graph_build_s": 7.99,
+     "load_rate_transactions_per_s": 31460.0
+    },
+    {
+     "backend": "postgresql 15 (SqlStore)",
+     "risk_scoring_per_customer": {
+      "n": 300,
+      "mean_ms": 110.76,
+      "p50_ms": 112.59,
+      "p95_ms": 133.29,
+      "max_ms": 247.5
+     },
+     "daily_batch": {
+      "customers_screened": 1153,
+      "transactions_in_scope": 1079,
+      "alerts_created": 103,
+      "alerts_merged": 0,
+      "errors": 0,
+      "duration_s": 154.81,
+      "customers_per_second": 7.45,
+      "timing_ms": {
+       "risk_assessment": 137123,
+       "alert_generation": 17610
+      },
+      "ms_per_customer": 134.27
+     },
+     "daily_batch_rerun": {
+      "duration_s": 151.28,
+      "alerts_created": 0,
+      "alerts_merged": 103,
+      "timing_ms": {
+       "risk_assessment": 136898,
+       "alert_generation": 14288
+      }
+     },
+     "api_batch_ingestion": {
+      "rows": 5000,
+      "accepted": 5000,
+      "rejected": 0,
+      "seconds": 11.044,
+      "rows_per_second": 452.7
+     },
+     "queries": {
+      "alerts_in_store": 103,
+      "alert_queue_page_50": {
+       "n": 20,
+       "mean_ms": 20.71,
+       "p50_ms": 19.68,
+       "p95_ms": 28.18,
+       "max_ms": 28.18
+      },
+      "alert_queue_filtered": {
+       "n": 20,
+       "mean_ms": 22.91,
+       "p50_ms": 21.84,
+       "p95_ms": 29.93,
+       "max_ms": 29.93
+      },
+      "alert_detail": {
+       "n": 20,
+       "mean_ms": 31.42,
+       "p50_ms": 30.83,
+       "p95_ms": 36.29,
+       "max_ms": 36.29
+      },
+      "kpis": {
+       "n": 5,
+       "mean_ms": 7.81,
+       "p50_ms": 7.25,
+       "p95_ms": 9.23,
+       "max_ms": 9.23
+      },
+      "customer_transactions_90d": {
+       "n": 20,
+       "mean_ms": 9.45,
+       "p50_ms": 9.2,
+       "p95_ms": 11.63,
+       "max_ms": 11.63
+      },
+      "graph_counterparties_degree2": {
+       "n": 20,
+       "mean_ms": 0.28,
+       "p50_ms": 0.27,
+       "p95_ms": 0.45,
+       "max_ms": 0.45
+      },
+      "graph_neighbourhood_depth2": {
+       "n": 20,
+       "mean_ms": 0.94,
+       "p50_ms": 0.92,
+       "p95_ms": 1.14,
+       "max_ms": 1.14
+      },
+      "case_workbench_assembly": {
+       "n": 5,
+       "mean_ms": 531.29,
+       "p50_ms": 515.06,
+       "p95_ms": 581.32,
+       "max_ms": 581.32
+      }
+     },
+     "v3": {
+      "triage_recompute_all_open": {
+       "recomputed": 103,
+       "priority_changed": 0,
+       "ms": 5855.8
+      },
+      "mule_assessment_per_customer": {
+       "n": 30,
+       "mean_ms": 155.31,
+       "p50_ms": 151.47,
+       "p95_ms": 254.49,
+       "max_ms": 267.99
+      },
+      "mule_flow_depth2": {
+       "n": 30,
+       "mean_ms": 2.52,
+       "p50_ms": 2.37,
+       "p95_ms": 3.19,
+       "max_ms": 3.58
+      },
+      "mule_fan_patterns": {
+       "n": 5,
+       "mean_ms": 187.63,
+       "p50_ms": 187.06,
+       "p95_ms": 190.17,
+       "max_ms": 190.17
+      },
+      "data_quality_summary": {
+       "n": 10,
+       "mean_ms": 10.11,
+       "p50_ms": 9.04,
+       "p95_ms": 13.51,
+       "max_ms": 13.51
+      },
+      "alert_quality": {
+       "n": 10,
+       "mean_ms": 21.84,
+       "p50_ms": 21.83,
+       "p95_ms": 23.33,
+       "max_ms": 23.33
+      },
+      "my_work": {
+       "n": 10,
+       "mean_ms": 15.1,
+       "p50_ms": 14.67,
+       "p95_ms": 17.53,
+       "max_ms": 17.53
+      },
+      "gate_with_rejections": {
+       "rows": 2000,
+       "processed": 1801,
+       "rejected": 199,
+       "seconds": 8.449,
+       "rows_per_second": 236.7,
+       "accounting_balanced": true
+      },
+      "customers_in_store": 9843
+     },
+     "memory": {
+      "after_run": {
+       "rss_mb": 552.2,
+       "peak_mb": 806.1
+      }
+     },
+     "bulk_load_s": 24.72,
+     "bulk_load_rows": 323324,
+     "bulk_load_transactions_per_s": 10168.0,
+     "container_and_graph_build_s": 5.79
+    }
+   ]
+  }
+ ]
+}

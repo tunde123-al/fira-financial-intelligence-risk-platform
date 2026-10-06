@@ -1,0 +1,267 @@
+{
+ "created_at": "2026-10-03T19:09:58.171050+00:00",
+ "api": "http://localhost:8765",
+ "steps": [
+  {
+   "n": 1,
+   "step": "API is ready, schema current, baseline ingestion batch recorded from the dataset manifest",
+   "passed": true,
+   "evidence": {
+    "schema_revision": "0004",
+    "db_latency_ms": 3.73,
+    "baseline_expected": 40296,
+    "baseline_received": 40296,
+    "coverage": 1.0
+   },
+   "seconds": 8.8
+  },
+  {
+   "n": 2,
+   "step": "Data-quality failure: a dirty batch is quarantined with reasons, accounting balances, nothing is lost silently",
+   "passed": true,
+   "evidence": {
+    "batch": "BAT-DD9E60655937",
+    "accounting": "19 = 13 + 6 + 0",
+    "reason_codes": [
+     "DUPLICATE_ID",
+     "INVALID_TIMESTAMP",
+     "MALFORMED_ROW",
+     "MISSING_FIELD",
+     "NON_POSITIVE_AMOUNT",
+     "UNKNOWN_ACCOUNT"
+    ],
+    "late": 1,
+    "missing": 6,
+    "coverage_overall": 0.999851,
+    "quality_score": 99.98
+   },
+   "seconds": 9.35
+  },
+  {
+   "n": 3,
+   "step": "Monitoring run over the scenario customers raises alerts with explainable triage",
+   "passed": true,
+   "evidence": {
+    "customers_screened": 20,
+    "alerts_created": 28,
+    "duration_ms": 8025,
+    "alerts_by_priority": {
+     "CRITICAL": 4,
+     "HIGH": 18,
+     "MEDIUM": 6
+    },
+    "top_alert": {
+     "alert_id": "MAL-2023448C7909",
+     "detector_id": "FAN_OUT",
+     "triage_score": 67.8,
+     "triage_priority": "CRITICAL"
+    }
+   },
+   "seconds": 12.28
+  },
+  {
+   "n": 4,
+   "step": "Why a score: the triage explanation lists every factor with points, maximum and reason",
+   "passed": true,
+   "evidence": {
+    "alert": "MAL-2023448C7909",
+    "score": 67.8,
+    "priority": "CRITICAL",
+    "largest_factors": [
+     [
+      "Customer risk score (0-100 engine score)",
+      19.95
+     ],
+     [
+      "Detector severity",
+      13.0
+     ],
+     [
+      "Independent signal categories firing for the customer",
+      10.0
+     ]
+    ]
+   },
+   "seconds": 2.08
+  },
+  {
+   "n": 5,
+   "step": "Money-mule scenario: indicators with evidence, flow graph, fan-in search",
+   "passed": true,
+   "evidence": {
+    "customer": "CUST-11490",
+    "band": "HIGH",
+    "score": 66.8,
+    "indicators_fired": [
+     "fan_in",
+     "fan_out",
+     "flagged_network",
+     "low_retention",
+     "rapid_movement"
+    ],
+    "flow_nodes": 60,
+    "flow_edges": 61,
+    "in_usd": 11929.64,
+    "out_usd": 10200.9
+   },
+   "seconds": 6.83
+  },
+  {
+   "n": 6,
+   "step": "False-positive scenario: a benign look-alike alerts, is reviewed and cleared; feedback is recorded",
+   "passed": true,
+   "evidence": {
+    "customer": "CUST-11325",
+    "alert": "MAL-A7490AB95B54",
+    "mule_band": "LOW",
+    "recorded": {
+     "decision": "FALSE_POSITIVE",
+     "investigator": "U-analyst",
+     "decided_at": "2026-10-03T19:07:02.794088Z"
+    }
+   },
+   "seconds": 8.81
+  },
+  {
+   "n": 7,
+   "step": "Investigator queue: assign, My Work ordering, invalid transitions refused",
+   "passed": true,
+   "evidence": {
+    "my_open": 1,
+    "high_priority": 1,
+    "overdue": 0
+   },
+   "seconds": 8.37
+  },
+  {
+   "n": 8,
+   "step": "Case: create, investigate customer, transactions and graph, attach evidence, note, change priority",
+   "passed": true,
+   "evidence": {
+    "case": "FC-2026-000001",
+    "counterparties": 99,
+    "customer_transactions": 49,
+    "evidence_transaction": "TXN-00033400"
+   },
+   "seconds": 26.63
+  },
+  {
+   "n": 9,
+   "step": "Decision closes the case, resolves its alerts and appears in the timeline in real-time order",
+   "passed": true,
+   "evidence": {
+    "timeline_events": 11,
+    "sources": [
+     "alert",
+     "case",
+     "note"
+    ]
+   },
+   "seconds": 9.81
+  },
+  {
+   "n": 10,
+   "step": "Audit trail contains the journey and cannot be edited through the API",
+   "passed": true,
+   "evidence": {
+    "audit_rows": 91,
+    "actions_seen": [
+     "alert_assigned",
+     "alert_created",
+     "alert_status_changed",
+     "case_closed",
+     "case_created",
+     "case_priority_changed",
+     "case_status_changed",
+     "decision_recorded",
+     "evidence_added",
+     "graph_query",
+     "investigation_note_added",
+     "login",
+     "monitoring_run",
+     "mule_assessment",
+     "risk_score_generated",
+     "seed_batch_registered",
+     "tool_call",
+     "transactions_ingested"
+    ]
+   },
+   "seconds": 10.39
+  },
+  {
+   "n": 11,
+   "step": "Operations: alert-quality metrics use valid denominators only; business metrics are exposed",
+   "passed": true,
+   "evidence": {
+    "decided": 2,
+    "confirmation_rate": 0.5,
+    "false_discovery_rate": 0.5,
+    "low_sample_flag": true,
+    "open_alerts": 26
+   },
+   "seconds": 6.16
+  },
+  {
+   "n": 12,
+   "step": "Configuration governance: a detector switch and a threshold change are logged with who, why, old and new",
+   "passed": true,
+   "evidence": {
+    "changes_recorded": 2,
+    "example": {
+     "path": "triage.thresholds.high",
+     "old_value": 50.0,
+     "new_value": 52.0,
+     "changed_by": "U-admin",
+     "source": "api"
+    }
+   },
+   "seconds": 15.07
+  },
+  {
+   "n": 13,
+   "step": "Security behaviour over HTTP: 401, 403, oversize 413, login lockout 429, logout revokes the token",
+   "passed": true,
+   "evidence": {
+    "login_sequence": [
+     401,
+     401,
+     401,
+     401,
+     401,
+     429,
+     429
+    ],
+    "oversize_request": "413"
+   },
+   "seconds": 34.04
+  },
+  {
+   "n": 14,
+   "step": "Backup (encrypted), verify, and restore test into a scratch database",
+   "passed": true,
+   "evidence": {
+    "size_bytes": 1998855,
+    "dump_seconds": 0.59,
+    "restore_seconds": 22.8,
+    "row_counts_match": true,
+    "tables_checked": 13
+   },
+   "seconds": 30.19
+  },
+  {
+   "n": 15,
+   "step": "Restore into a named database and verify the restored application",
+   "passed": true,
+   "evidence": {
+    "restored_database": "fira_accept_restored_9a34f0",
+    "alerts": 28,
+    "cases": 1,
+    "batches": 2,
+    "audit_append_only": true
+   },
+   "seconds": 32.5
+  }
+ ],
+ "passed": 15,
+ "total": 15
+}

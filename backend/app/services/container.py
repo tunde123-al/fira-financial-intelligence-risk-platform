@@ -27,7 +27,7 @@ def build_store(settings: Settings) -> DataStore:
         raise RuntimeError("DATABASE_URL is required when DATA_BACKEND=postgres")
     from app.data.sql_store import SqlStore
 
-    return SqlStore(settings.database_url)
+    return SqlStore(settings.database_url, connect_timeout_s=settings.db_connect_timeout_s)
 
 
 def active_risk_config(settings: Settings, store: DataStore) -> RiskConfig:
@@ -57,6 +57,9 @@ class Container:
     registry: Any
     agent: Any
     ml_model: Any = None
+    monitoring_config: Any = None
+    monitoring_repo: Any = None
+    monitoring: Any = None
     _lock: threading.RLock = field(default_factory=threading.RLock)
 
     def list_customer_ids(self) -> list[str]:
@@ -138,4 +141,37 @@ def build_container(settings: Settings | None = None, load_ml: bool = True, buil
                   llm=llm, registry=registry, agent=None, ml_model=ml_model)
     c.agent = InvestigationAgent(c, registry, llm, engine=agent_engine,
                                  max_report_attempts=settings.agent_max_report_attempts)
+    from app.monitoring.config import load_monitoring_config
+    from app.monitoring.repository import new_repo
+    from app.monitoring.service import MonitoringService
+
+    c.monitoring_config = load_monitoring_config(settings.monitoring_config_path)
+    c.monitoring_repo = new_repo(settings, store)
+    c.monitoring = MonitoringService(c)
+    _register_baseline_batch(c)
+    _record_config_baseline(c)
     return c
+
+
+def _register_baseline_batch(c: Any) -> None:
+    """Record the loaded dataset once in the ingestion ledger. `expected` comes from the dataset manifest
+    (what the generator says it produced), `received` from what the store actually holds."""
+    try:
+        if c.monitoring_repo.list_batches(limit=1)[1]:
+            return
+        held = c.store.count_transactions(None, None)
+        declared = (c.store.dataset_manifest().get("counts") or {}).get("transactions")
+        c.monitoring.register_seed_batch("seed-dataset (generator manifest)", int(declared) if declared is not None else None,
+                                         held, held)
+    except Exception:  # the ledger is informational; never block start-up on it
+        logging.getLogger("fira.container").warning("baseline ingestion batch not recorded", exc_info=True)
+
+
+def _record_config_baseline(c: Any) -> None:
+    """Record a baseline of the governed configurations, or the file edits made since the last start."""
+    try:
+        from app.monitoring import governance
+
+        governance.sync(c, "system", "startup")
+    except Exception:  # governance is a record, never a start-up blocker
+        logging.getLogger("fira.container").warning("configuration baseline not recorded", exc_info=True)

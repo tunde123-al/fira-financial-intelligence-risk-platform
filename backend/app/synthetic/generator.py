@@ -87,6 +87,9 @@ class SyntheticBank:
         self.txn_rows: list[dict[str, Any]] = []
         self.labels: list[dict[str, Any]] = []
         self.used_customers: set[str] = set()
+        # subclasses (e.g. the monitoring benchmark) can register more scenarios
+        self.suspicious_scenarios: set[str] = set(SUSPICIOUS_SCENARIOS)
+        self.expected_signals: dict[str, list[str]] = dict(SCENARIO_EXPECTED_SIGNALS)
         self.extra_devices: list[dict[str, Any]] = []
         self.device_users: dict[str, set[str]] = {}
 
@@ -140,9 +143,9 @@ class SyntheticBank:
                entity_type: str = "customer", notes: str = "") -> None:
         self.labels.append({
             "entity_type": entity_type, "entity_id": entity_id, "scenario": scenario,
-            "is_suspicious": scenario in SUSPICIOUS_SCENARIOS,
+            "is_suspicious": scenario in self.suspicious_scenarios,
             "window_start": self.window_start.isoformat(), "window_end": self.as_of.isoformat(),
-            "expected_signals": SCENARIO_EXPECTED_SIGNALS.get(scenario, []),
+            "expected_signals": self.expected_signals.get(scenario, []),
             "related_entities": related or [], "notes": notes,
         })
 
@@ -643,6 +646,9 @@ class SyntheticBank:
                               latitude=fm.latitude, longitude=fm.longitude)
             self._label(cid, "travel_legit", notes=f"trip to {fc}")
 
+    def inject_extra(self, individuals: list[str], businesses: list[str]) -> None:
+        """Hook for subclasses to inject additional labelled scenarios. The base dataset adds none."""
+
     # -------------------------------------------------------- alerts & history
     def build_alerts_and_investigations(self) -> None:
         rng = self.rng
@@ -755,6 +761,7 @@ class SyntheticBank:
         self.inject_high_risk_merchant(self._pick_unused(individuals, cfg.scaled("high_risk_merchant")))
         self.inject_legit_high_value(self._pick_unused(individuals, cfg.scaled("legit_high_value")))
         self.inject_travel(self._pick_unused(individuals, cfg.scaled("travel_legit")))
+        self.inject_extra(individuals, businesses)
         normals = self._pick_unused(individuals + businesses, min(cfg.n_normal_labels, len(individuals) // 4))
         for c in normals:
             self._label(c, "normal")

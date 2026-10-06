@@ -132,6 +132,33 @@ def inbound_counterparties(inbound: pd.DataFrame) -> pd.Series:
     return inbound.sender_account_id.fillna(inbound.external_counterparty).fillna("UNKNOWN")
 
 
+def outbound_counterparties(outbound: pd.DataFrame, types: list[str] | None = None) -> pd.Series:
+    """Beneficiary key of each completed outbound transfer: receiver account, else external id."""
+    o = outbound[outbound.status == "completed"]
+    if types is not None:
+        o = o[o.transaction_type.isin(types)]
+    return o.receiver_account_id.fillna(o.external_counterparty).dropna()
+
+
+def band_window_stats(df: pd.DataFrame, amounts: pd.Series, hours: float) -> tuple[int, float, pd.Timestamp | None]:
+    """Largest number of events inside any rolling `hours` window, with their summed amount.
+
+    `df` and `amounts` are aligned. Returns (count, sum, window start); (0, 0.0, None) if empty.
+    """
+    if df.empty:
+        return 0, 0.0, None
+    order = np.argsort(epoch_seconds(df.timestamp), kind="stable")
+    t = epoch_seconds(df.timestamp)[order]
+    a = amounts.to_numpy(dtype=float)[order]
+    csum = np.concatenate([[0.0], np.cumsum(a)])
+    right = np.searchsorted(t, t + int(hours * 3600), side="right")
+    counts = right - np.arange(len(t))
+    sums = csum[right] - csum[np.arange(len(t))]
+    # prefer more events, then more value
+    i = int(np.lexsort((sums, counts))[-1])
+    return int(counts[i]), float(sums[i]), pd.Timestamp(int(t[i]), unit="s", tz="UTC")
+
+
 def period_stats(frames: OrientedFrames, start: datetime, end: datetime) -> dict[str, Any]:
     out = frames.outbound
     inn = frames.inbound
@@ -156,4 +183,5 @@ def period_stats(frames: OrientedFrames, start: datetime, end: datetime) -> dict
         "type_channel_mix": distribution(out, ["transaction_type", "channel"]),
         "distinct_inbound_counterparties": int(inbound_counterparties(inn).nunique()),
         "distinct_inbound_per_30d": round(inbound_counterparties(inn).nunique() * 30.0 / days, 2),
+        "distinct_outbound_per_30d": round(outbound_counterparties(out, ["transfer"]).nunique() * 30.0 / days, 2),
     }
