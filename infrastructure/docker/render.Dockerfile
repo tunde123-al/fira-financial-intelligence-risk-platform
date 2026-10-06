@@ -13,8 +13,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv/fira/backend
-COPY backend/requirements.txt ./
-RUN pip install -r requirements.txt
+COPY backend/requirements.txt backend/constraints.txt ./
+RUN pip install -r requirements.txt -c constraints.txt
 COPY backend/ ./
 COPY documents/ /srv/fira/documents/
 COPY evaluation/ /srv/fira/evaluation/
@@ -26,5 +26,8 @@ ENV FRONTEND_DIST_DIR=/srv/fira/frontend-dist \
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=240s --retries=5 \
   CMD curl -fs http://localhost:${PORT:-8000}/health || exit 1
+# Forwarded headers (X-Forwarded-For/-Proto) are honoured only from the proxies listed in $FORWARDED_ALLOW_IPS (uvicorn's own
+# variable; default 127.0.0.1,::1). Never '*': that trusts a client-supplied X-Forwarded-For and lets anyone spoof the
+# address used for rate limiting and login lockout. See docs/DEPLOYMENT.md.
 # bootstrap is idempotent: migrations, dataset generation/load (SEED_CUSTOMERS), document indexing
-CMD ["sh", "-c", "python -m app.db.bootstrap && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-1} --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "python -m app.db.bootstrap && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-1} --proxy-headers"]

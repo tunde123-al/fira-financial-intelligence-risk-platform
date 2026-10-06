@@ -36,6 +36,8 @@ services:
         value: none                     # no external model calls in the public demo
       - key: SEED_CUSTOMERS
         value: "2000"                   # smaller than the 10,000 default so start-up fits a small instance
+      # FORWARDED_ALLOW_IPS (optional): comma-separated proxy IPs or CIDRs whose X-Forwarded-* headers uvicorn may trust.
+      # Left unset on purpose: unknown proxies are not trusted, so client addresses are the proxy's address (see DEPLOYMENT.md).
       - key: PII_MASKING
         value: "true"
       - key: RATE_LIMIT_PER_MINUTE

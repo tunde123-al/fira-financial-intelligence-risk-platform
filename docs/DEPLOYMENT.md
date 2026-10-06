@@ -58,6 +58,23 @@ Database roles: run migrations (`alembic upgrade head`) with the owner role and 
 exercised end to end in `tests/integration/test_least_privilege_postgres.py`; the Render blueprint still uses the single
 connection string Render provides, so it runs as the owner (a known gap for that demo).
 
+## Start-up, proxies and dependencies (hardening notes)
+
+* **Seeding is decided by the database.** `python -m app.db.bootstrap` runs migrations, then loads the synthetic dataset only if
+  `transactions` is empty (generating the dataset files first only if they are missing). A populated database is never
+  regenerated or reloaded and does not need `DATASET_DIR` files, so an ephemeral disk (Render) no longer triggers regeneration on restart.
+  Documents are still re-indexed at each start because the default vector store is in memory.
+* **Forwarded headers are not trusted by default.** The Render image runs uvicorn with `--proxy-headers` but **without**
+  `--forwarded-allow-ips`, so uvicorn honours `X-Forwarded-For` / `-Proto` only from `$FORWARDED_ALLOW_IPS` (default `127.0.0.1,::1`).
+  Behind a platform proxy the client address is therefore the proxy's address: a client cannot spoof the address used for rate
+  limiting and login lockout, but those per-address counters are shared by everyone behind the same proxy, and `X-Forwarded-Proto`
+  is ignored. Once the platform's proxy addresses are known and verified, set `FORWARDED_ALLOW_IPS` to them (never `*`).
+* **Dependencies are pinned.** `backend/requirements.txt` holds exact versions of the direct dependencies; `backend/constraints.txt`
+  pins every runtime package installed and tested together. Install with `pip install -r requirements.txt -c constraints.txt`
+  (the Dockerfiles and `requirements-dev.txt` do). To update: change a pin, run the tests, regenerate `constraints.txt`.
+* **`.dockerignore`** keeps the build context to what the images copy (`frontend/`, `backend/` without tests, `documents/`,
+  `evaluation/` without results, `infrastructure/docker/`).
+
 ## Operations
 
 * **Readiness** `GET /health/ready` also reports `database_latency_ms`, `schema_revision` and `schema_current`; a database that is

@@ -1,0 +1,53 @@
+# Docker build context for infrastructure/docker/{render,backend,frontend}.Dockerfile (context = repository root).
+# The images copy only: frontend/, backend/, documents/, evaluation/ (and infrastructure/docker/nginx.conf for the
+# nginx frontend image). Everything else is excluded. The Dockerfiles themselves are always sent regardless.
+
+# version control and CI
+.git
+.gitignore
+.github
+
+# local environments and secrets (never baked into an image)
+.venv
+venv
+env
+.env
+.env.*
+
+# caches and tooling output
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/.coverage.*
+**/htmlcov
+**/coverage.xml
+**/*.log
+**/*.tsbuildinfo
+**/.DS_Store
+**/Thumbs.db
+.idea
+.vscode
+
+# frontend: rebuilt inside the image
+**/node_modules
+frontend/dist
+frontend/coverage
+
+# local generated data and models (the image generates or loads its own; DATASET_DIR/MODEL_DIR are created at runtime)
+data
+
+# not used by any image
+docs
+backend/tests
+evaluation/results
+infrastructure/scripts
+infrastructure/sql
+Makefile
+/README.md
+/SECURITY.md
+/LICENSE
+/render.yaml
+/docker-compose.yml

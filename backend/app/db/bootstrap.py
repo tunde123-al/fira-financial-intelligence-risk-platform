@@ -3,8 +3,8 @@
     python -m app.db.bootstrap
 
 1. wait for PostgreSQL, apply migrations (alembic upgrade head)
-2. generate the synthetic dataset if it is missing (DATASET_DIR)
-3. load it into PostgreSQL if the database is empty
+2. if the database is EMPTY: generate the synthetic dataset if its files are missing (DATASET_DIR), then load it;
+   a populated database is never regenerated or reloaded and needs no dataset files
 4. project the graph into Neo4j if GRAPH_BACKEND=neo4j and Neo4j is empty
 5. ingest the document corpus if the vector store is empty
 6. train the ML anomaly model if it is missing (optional, TRAIN_ML_ON_START=true)
@@ -37,6 +37,36 @@ def wait_for(fn, what: str, attempts: int = 60, delay: float = 2.0) -> None:
     raise RuntimeError(f"{what} not ready")
 
 
+def database_is_seeded(engine) -> bool:
+    """The database, not the local disk, says whether the dataset has been loaded."""
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        return bool(conn.execute(text("SELECT count(*) FROM transactions")).scalar())
+
+
+def seed_if_empty(engine, s, generate=None, load=None) -> str:
+    """Generate (only if the files are missing) and load the synthetic dataset, but only into an EMPTY database.
+
+    A populated database is left alone and no dataset files are generated: on hosts with an ephemeral disk the
+    files vanish on every restart while PostgreSQL keeps the data, so regenerating them would be pure waste.
+    Returns "loaded" or "already_loaded".
+    """
+    if database_is_seeded(engine):
+        log("database already loaded; dataset files not needed")
+        return "already_loaded"
+    if generate is None:
+        from app.synthetic.generator import generate_dataset as generate
+    if load is None:
+        from app.db.loader import load
+    if not (Path(s.dataset_dir) / "manifest.json").exists():
+        n = int(os.environ.get("SEED_CUSTOMERS", "10000"))
+        log("generating synthetic dataset", customers=n)
+        generate(Path(s.dataset_dir), n_customers=n)
+    log("loading dataset into PostgreSQL", counts=load(s.database_url, Path(s.dataset_dir)))
+    return "loaded"
+
+
 def main() -> None:
     s = get_settings()
     if s.data_backend != "postgres":
@@ -49,21 +79,7 @@ def main() -> None:
     subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=BACKEND_ROOT, check=True)
     log("migrations applied")
 
-    if not (Path(s.dataset_dir) / "manifest.json").exists():
-        from app.synthetic.generator import generate_dataset
-
-        n = int(os.environ.get("SEED_CUSTOMERS", "10000"))
-        log("generating synthetic dataset", customers=n)
-        generate_dataset(Path(s.dataset_dir), n_customers=n)
-
-    with engine.connect() as conn:
-        n_tx = conn.execute(text("SELECT count(*) FROM transactions")).scalar()
-    if not n_tx:
-        from app.db.loader import load
-
-        log("loading dataset into PostgreSQL", counts=load(s.database_url, Path(s.dataset_dir)))  # type: ignore[arg-type]
-    else:
-        log("database already loaded", transactions=n_tx)
+    seed_if_empty(engine, s)
 
     from app.services.container import build_container
 

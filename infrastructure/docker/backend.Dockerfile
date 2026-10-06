@@ -4,10 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv/fira/backend
-COPY backend/requirements.txt ./
+COPY backend/requirements.txt backend/constraints.txt ./
 ARG WITH_DOCLING=false
 COPY backend/requirements-docling.txt ./
-RUN pip install -r requirements.txt && if [ "$WITH_DOCLING" = "true" ]; then pip install -r requirements-docling.txt; fi
+RUN pip install -r requirements.txt -c constraints.txt && if [ "$WITH_DOCLING" = "true" ]; then pip install -r requirements-docling.txt; fi
 COPY backend/ ./
 COPY documents/ /srv/fira/documents/
 COPY evaluation/ /srv/fira/evaluation/
