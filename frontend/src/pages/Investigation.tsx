@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Session, api } from "../api";
+import Copilot from "../components/Copilot";
 import GraphView from "../components/GraphView";
 import { Badge, Bars, Card, Field, JsonBlock, ScoreBadge, Status, Table, Tabs, errorText, fmt, useAsync } from "../components/ui";
 import { entityHref } from "../router";
@@ -309,6 +310,8 @@ export default function InvestigationPage({ id, session }: { id: string; session
           ))}
         </Card>
       )}
+
+      {d.subject_type === "customer" && tab === "Evidence" && <Copilot customerId={d.subject_id} investigationId={id} />}
 
       {tab === "Evidence" && (
         <Card title={`Evidence (${evidence.data?.length ?? 0} items)`}>

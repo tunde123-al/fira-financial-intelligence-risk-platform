@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, qs } from "../api";
 import { Badge, Bars, Card, Field, ScoreBadge, Status, Table, errorText, fmt, useAsync } from "../components/ui";
+import Copilot from "../components/Copilot";
 import { entityHref, go } from "../router";
 
 export default function CustomerPage({ id }: { id: string }) {
@@ -50,6 +51,7 @@ export default function CustomerPage({ id }: { id: string }) {
         </div>
       </div>
       {runError && <div className="error">{runError}</div>}
+      <Copilot customerId={c.customer_id} />
       <div className="grid2">
         <Card title="Profile">
           <dl className="dl">

@@ -16,7 +16,7 @@ RULES: list[tuple[str, str]] = [
     ("/api/mule", "investigations"), ("/api/investigations", "investigations"),
     ("/api/evidence", "evidence"),
     ("/api/network", "graph"), ("/api/graph", "graph"),
-    ("/api/data-quality", "data-quality"), ("/api/config", "config"),
+    ("/api/copilot", "copilot"), ("/api/data-quality", "data-quality"), ("/api/config", "config"),
     ("/api/evaluation", "evaluation"), ("/api/improvement", "evaluation"),
     ("/api/risk", "risk"),
 ]

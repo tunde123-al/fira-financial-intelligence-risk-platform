@@ -20,6 +20,7 @@ from app.api import (
     routes_admin,
     routes_cases,
     routes_config,
+    routes_copilot,
     routes_core,
     routes_investigations,
     routes_knowledge,
@@ -56,6 +57,7 @@ OPENAPI_TAGS = [
     {"name": "evidence", "description": "Evidence attached to investigations and cases."},
     {"name": "graph", "description": "Transfer-graph queries."},
     {"name": "data-quality", "description": "Ingestion batches, quarantined rows, coverage and success."},
+    {"name": "copilot", "description": "Grounded AI Investigation Copilot (structured, read-only)."},
     {"name": "config", "description": "Configuration governance and change log."},
     {"name": "evaluation", "description": "Offline evaluation on labelled synthetic data."},
     {"name": "audit", "description": "Append-only audit trail."},
@@ -152,6 +154,7 @@ def create_app(container: Any | None = None) -> FastAPI:
     app.include_router(routes_monitoring.router)
     app.include_router(routes_cases.router)
     app.include_router(routes_config.router)
+    app.include_router(routes_copilot.router)
     app.include_router(routes_network.router)
     app.include_router(routes_network.mule)
     app.include_router(routes_quality.router)
