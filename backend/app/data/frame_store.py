@@ -311,6 +311,11 @@ class FrameStore:
         s = self._acc["status"].reindex([a for a in account_ids if a]).dropna()
         return {str(k): str(v) for k, v in s.items()}
 
+    def dataset_quality(self) -> dict[str, Any]:
+        from app.data.quality import audit
+
+        return audit(self.customers, self.accounts, self.tx, self.merchants, self.devices, self.as_of())
+
     def dataset_manifest(self) -> dict[str, Any]:
         return dict(self.manifest)
 

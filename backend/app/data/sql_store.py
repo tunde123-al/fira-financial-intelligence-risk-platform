@@ -182,6 +182,12 @@ SQL = {
     "count_txn": 'SELECT count(*) AS n FROM transactions WHERE "timestamp" BETWEEN :start AND :end',
     "known_txn_ids": "SELECT transaction_id AS id FROM transactions WHERE transaction_id = ANY(:ids)",
     "account_statuses": "SELECT account_id, status FROM accounts WHERE account_id = ANY(:ids)",
+    "q_txn": ('SELECT transaction_id, "timestamp", sender_account_id, receiver_account_id, merchant_id, device_id, amount, '
+              "currency, transaction_type, channel, status FROM transactions"),
+    "q_acc": "SELECT account_id, customer_id, status FROM accounts",
+    "q_cust": "SELECT customer_id, country, segment FROM customers",
+    "q_mer": "SELECT merchant_id FROM merchants",
+    "q_dev": "SELECT device_id FROM devices",
     "manifest": "SELECT manifest FROM dataset_manifest WHERE id = 1",
     "latest_txn": 'SELECT max("timestamp") AS ts FROM transactions',
     "known_device_ids": "SELECT device_id AS id FROM devices WHERE device_id = ANY(:ids)",
@@ -415,6 +421,15 @@ class SqlStore:
     def account_statuses(self, account_ids: list[str]) -> dict[str, str]:
         return {r["account_id"]: r["status"] for r in self._rows("account_statuses", ids=list(account_ids))} \
             if account_ids else {}
+
+    def dataset_quality(self) -> dict[str, Any]:
+        """Same audit as the in-memory store: only the columns it needs are read, then `app.data.quality.audit` runs."""
+        from app.data.quality import audit
+
+        tx = self._frame("q_txn")
+        for col in ("amount",):
+            tx[col] = pd.to_numeric(tx[col], errors="coerce")
+        return audit(self._frame("q_cust"), self._frame("q_acc"), tx, self._frame("q_mer"), self._frame("q_dev"), self.as_of())
 
     def dataset_manifest(self) -> dict[str, Any]:
         return dict((self._one("manifest") or {}).get("manifest") or {})
