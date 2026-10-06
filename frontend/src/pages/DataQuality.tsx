@@ -7,6 +7,7 @@ const GROUPS = ["", "malformed", "duplicate", "invalid", "referential"];
 const PAGE = 20;
 
 export default function DataQualityPage() {
+  const ds = useAsync(() => api.get<any>("/api/data-quality/dataset"), []);
   const s = useAsync(() => api.get<any>("/api/data-quality/summary"), []);
   const [batch, setBatch] = useState("");
   const [group, setGroup] = useState("");
@@ -25,6 +26,33 @@ export default function DataQualityPage() {
         sanitised copy) so nothing disappears silently. Figures below are computed from the batch ledger; "n/a" means the source never declared
         what it expected, so no coverage can be stated.
       </div>
+      <Card title="Stored dataset audit (computed from the data on demand)">
+        {ds.data ? (
+          <>
+            <div className="kpis">
+              <Kpi label="Records processed" value={ds.data.records_processed.toLocaleString()} />
+              <Kpi label="Valid" value={ds.data.valid.toLocaleString()} />
+              <Kpi label="With issues" value={ds.data.with_issues.toLocaleString()} />
+              <Kpi label="Quality score" value={ds.data.quality_score === null ? "n/a" : `${ds.data.quality_score}`} />
+              <Kpi label="Dataset age (days)" value={ds.data.freshness.dataset_age_days} />
+            </div>
+            <Table
+              rows={Object.entries(ds.data.checks).map(([k, v]: [string, any]) => ({ check: k, count: v.count, description: v.description }))}
+              columns={[
+                { key: "check", label: "Check" },
+                { key: "count", label: "Records", align: "right" },
+                { key: "description", label: "Rule" },
+              ]}
+            />
+            <p className="muted small">
+              Other tables: {JSON.stringify(ds.data.other_tables)}. {ds.data.freshness.note}. Computed in {ds.data.duration_ms} ms. The batch ledger below
+              covers rows as they arrive; this audit covers what is stored.
+            </p>
+          </>
+        ) : (
+          <Status loading={ds.loading} error={ds.error} />
+        )}
+      </Card>
       {t ? (
         <>
           <div className="kpis">

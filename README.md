@@ -7,6 +7,13 @@
 > **production-oriented prototype**: it is not a production banking system, is not regulatory-certified, has not been
 > operated in production and has not been validated on real data.
 
+**In 30 seconds**
+
+* **Problem.** Financial institutions must detect, investigate and explain suspicious activity, and be able to defend each decision.
+* **Solution.** Financial data processing and data-quality controls, explainable risk scoring, transaction-network analysis, investigation workflows with an audit trail, and an evidence-grounded AI assistant that cannot make decisions.
+* **Engineering.** Python / FastAPI / PostgreSQL / SQL, React + TypeScript, ETL and data-quality checks, graph analytics (NetworkX; Neo4j optional), LLM integration with output validation, CI, Docker/Render blueprint.
+* **Data.** Entirely synthetic. No real customers, no real money, nothing here is a legal or compliance conclusion.
+
 It models the workflow of a bank's financial-crime operations team:
 
 ```
@@ -239,6 +246,55 @@ Resolving or escalating needs a written reason; only the assignee (or an admin) 
 decision resolves its alerts and records the equivalent decision on a linked investigation. Details and the exact
 policies: [docs/TRANSACTION_MONITORING_ARCHITECTURE.md](docs/TRANSACTION_MONITORING_ARCHITECTURE.md).
 
+## Why this project matters
+
+FIRA is a **synthetic-data** portfolio project that shows one person building, end to end, the pieces of a financial-intelligence platform:
+
+| Skill area | What FIRA demonstrates (all implemented and tested) |
+|---|---|
+| **Data engineering** | seeded data generation, bulk `COPY` loading, row-level ingestion validation with 22 reason codes and batch accounting, a stored-dataset quality audit with a computed score, normalised PostgreSQL modelling with constraints, partial unique indexes and append-only triggers, ELT-style analytics derived from SQL/pandas, migrations, measured performance and index tuning |
+| **FinTech / AML** | transactions, accounts, alerts, cases, investigations; 19 explainable detectors (structuring, fan-in/out, rapid pass-through, circular flow, device sharing...), money-mule indicators, heuristic alert triage, alert-quality metrics with valid denominators only |
+| **Software engineering** | FastAPI + React/TypeScript, JWT/RBAC, 300+ backend tests, CI definition, Docker image, backup/restore with a tested restore, configuration governance |
+| **AI** | an evidence-grounded investigation agent and a **copilot** that answers questions from retrieved FIRA records, separates observed facts from derived signals from AI interpretation, validates AI text against the evidence and degrades safely when the model is missing or wrong |
+| **Graph analysis** | transaction-network projection, clusters, cycles, fund tracing, flow views, shared beneficiaries and devices |
+
+It does **not** claim production readiness: the data is synthetic, nothing has been run on real customers, RPO/RTO are targets, CI and
+the cloud deployment have not run, and the scores are heuristics for investigator review, not verdicts. Limitations are listed below.
+
+## Employer demo (about 10 minutes)
+
+1. Open the **Dashboard** (customers, accounts, transactions, open alerts, active investigations, data-quality status).
+2. Open **Alert Queue** (sorted by triage score) or **Money-mule View** and pick a high-risk customer.
+3. Open the **customer profile** and read the **risk score and the contribution chart**; open the transactions that support it.
+4. Click through to the **Graph Explorer** or the money-flow view to see the connected accounts, amounts and direction.
+5. In the **AI Investigation Copilot** panel ask *"Why was this customer classified as high risk?"* and *"Which transactions should be investigated first and why?"*: the answer separates **observed facts**, **derived signals**, an **AI interpretation** (labelled, validated, not evidence) and a **system recommendation**, and cites entity ids.
+6. Click **Run investigation** (agent) to create an investigation with evidence; create a **case**, attach a transaction as evidence, add a note, record a decision.
+7. Open the **Audit Log** and the case timeline to see every step, including `ai_investigation_requested` / `ai_response_generated`.
+8. Open **Data Quality** to see the stored-dataset audit and the ingestion ledger.
+
+Step-by-step with observed values: [docs/DEMO.md](docs/DEMO.md).
+
+## AI Investigation Copilot
+
+`POST /api/copilot/ask {customer_id, question}` -> structured JSON (`observed_facts`, `derived_signals`, `risk_factors`, `evidence`,
+`interpretation`, `recommendations`, `limitations`). Retrieval is rule-driven from FIRA's stores and engines; an optional LLM writes one
+paragraph that is **discarded if it names any entity not in the evidence**; with no provider (the default) a deterministic summary is used.
+Hallucination controls, prompt-injection handling, audit events and tests: [docs/ai-investigation-copilot.md](docs/ai-investigation-copilot.md).
+Environment: `LLM_PROVIDER` (none | anthropic | openai | ollama), `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`; no key is ever committed.
+
+## Data quality
+
+Two layers, both computed from data: the ingestion gate (what happened to incoming rows) and a **stored-dataset audit** (duplicates, invalid
+amounts and currencies, orphan references, impossible states, freshness, a quality score): [docs/data-quality.md](docs/data-quality.md).
+`GET /api/data-quality/dataset`.
+
+## Documentation map
+
+[Architecture overview (current vs future)](docs/ARCHITECTURE.md#fira-architecture-overview-current-implementation-vs-production-scale-future) ·
+[Pre-upgrade audit](docs/FIRA_ARCHITECTURE_AUDIT.md) · [Data pipeline](docs/data-pipeline.md) · [Risk engine](docs/risk-engine.md) ·
+[AML investigation](docs/aml-investigation.md) · [AI copilot](docs/ai-investigation-copilot.md) · [Data quality](docs/data-quality.md) ·
+[Security](docs/SECURITY.md)
+
 ## Production-oriented engineering
 
 What was added after the monitoring workflow, and where to read the evidence. Everything is on synthetic data.
@@ -378,8 +434,8 @@ Service tests are skipped, not failed, when their service variable is unset.
 
 | Check | Result |
 |---|---|
-| `tests/unit tests/agent tests/e2e` | **282 passed, 1 skipped; 80% line coverage** (10,439 statements; the PostgreSQL repository code is exercised by the integration suite below). CI enforces a 75% floor |
-| `tests/integration` + LangGraph parity against PostgreSQL 15 (Docker container) | **69 passed, 2 skipped** (Neo4j and Qdrant not configured in this pass; the previous pass ran Qdrant 1.12 with 56 passed). Includes the monitoring workflow re-run on PostgreSQL, constraint, atomicity, append-only, ledger, failure-mode and least-privilege tests |
+| `tests/unit tests/agent tests/e2e` | **311 passed, 1 skipped; 81% line coverage** (10,767 statements; the PostgreSQL repository code is exercised by the integration suite below). CI enforces a 75% floor |
+| `tests/integration` + LangGraph parity against PostgreSQL 15 (Docker container) | **70 passed, 2 skipped** (Neo4j and Qdrant not configured in this pass; the previous pass ran Qdrant 1.12 with 56 passed). Includes the monitoring workflow re-run on PostgreSQL, constraint, atomicity, append-only, ledger, failure-mode and least-privilege tests |
 | Vitest (`npm test`) | 23 passed |
 | Neo4j graph test, Qdrant test (this pass) | **NOT RUN**: the Neo4j image could not be pulled in this environment, so the Neo4j backend is still untested here; Qdrant was not started for the final pass |
 | End-to-end acceptance script against a live API and PostgreSQL (15 steps incl. backup and restore) | **15 of 15 passed**: [docs/ACCEPTANCE_TEST.md](docs/ACCEPTANCE_TEST.md) |
@@ -450,6 +506,10 @@ Full details and limitations: [docs/SECURITY.md](docs/SECURITY.md). No credentia
   PostgreSQL mode adds persistence and per-operation transactions.
 - **Access control is coarse.** Two roles; assignment-based write access; any analyst can read any case; no four-eyes on
   case decisions; token revocation and login lockout exist but are per process.
+- **The copilot is grounded, not infallible.** Intent detection is keyword-based; the AI paragraph is validated for entity ids and a few accusatory
+  patterns, not for every claim; no live LLM provider has been exercised (tests use a scripted provider); prompt injection through data fields has
+  not been red-teamed. With no provider it uses a deterministic summary.
+- **The stored-dataset audit reads the whole transaction table** (about 0.3 s at 15,000 rows) and finds nothing in the generated data because the generator produces clean data; its checks are proven by fault-injection tests.
 - **Triage and the money-mule view are heuristics, tuned once on synthetic data.** Triage is not a probability and is not a
   better ranking than the customer risk score it contains (holdout AUC 0.83 vs 0.92); the mule bands are not a better classifier
   than the existing fan-in / rapid-pass-through alerts (holdout F1 0.56 vs 0.72). Neither has seen a real investigator.

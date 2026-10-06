@@ -10,6 +10,7 @@ const HEALTH_LABELS: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  const dq = useAsync(() => api.get<any>("/api/data-quality/dataset"), []);
   const { data, error, loading } = useAsync(() => api.get("/api/dashboard"), []);
   const health = useAsync(() => api.get("/health/ready").catch((e) => ({ status: "degraded", checks: { error: String(e) } })), []);
   if (!data) return <Status loading={loading} error={error} />;
@@ -24,6 +25,7 @@ export default function Dashboard() {
         <Kpi label="Accounts" value={data.counts.accounts.toLocaleString()} />
         <Kpi label="Transactions" value={data.counts.transactions.toLocaleString()} />
         <Kpi label="Open legacy alerts (seeded)" value={Object.values(sev).reduce((a: number, b: any) => a + Number(b), 0).toLocaleString()} />
+        <Kpi label="Data quality (stored transactions)" value={dq.data ? (dq.data.quality_score === null ? "n/a" : `${dq.data.quality_score}% valid`) : dq.error ? "unavailable" : "…"} />
         <Kpi label="Active investigations" value={((byStatus.in_progress ?? 0) + (byStatus.pending_review ?? 0) + (byStatus.open ?? 0)).toLocaleString()} />
       </div>
       {data.monitoring && (

@@ -14,6 +14,12 @@ BATCH_ID = Path(pattern=r"^BAT-[0-9A-F]{4,16}$")
 REASON_GROUPS = r"^(malformed|duplicate|invalid|referential)$"
 
 
+@router.get("/dataset", summary="Audit of the STORED dataset: valid / duplicate / invalid / orphan counts and a quality score, computed on demand")
+def dataset(c: Any = Depends(get_container), p: Principal = Depends(require_role("analyst"))) -> dict[str, Any]:
+    with service_errors():
+        return c.store.dataset_quality()
+
+
 @router.get("/summary", summary="Coverage, processing success and rejection breakdown (computed from the batch ledger)")
 def summary(c: Any = Depends(get_container), p: Principal = Depends(require_role("analyst"))) -> dict[str, Any]:
     with service_errors():

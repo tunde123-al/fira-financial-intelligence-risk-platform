@@ -142,3 +142,10 @@ audited. Example client configuration:
 {"mcpServers": {"fira": {"command": "python", "args": ["-m", "app.mcp.server"], "cwd": "backend",
   "env": {"FIRA_MCP_API_KEY": "<key>", "MCP_API_KEYS": "<key>:analyst", "DATABASE_URL": "..."}}}}
 ```
+
+## AI Investigation Copilot and dataset data quality
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/copilot/ask` | body `{customer_id, question (≤500 chars), investigation_id?}`; auth required; read-only. Returns `status` (`ok` / `insufficient_evidence`), labelled sections (`observed_facts`, `derived_signals`, `risk_factors`, `evidence`, `recommendations`, `limitations`), the deterministic `risk` level and an `interpretation` that is either validated AI text or a deterministic template (`ai_used` says which). See [ai-investigation-copilot.md](ai-investigation-copilot.md) and [AI_THREAT_MODEL.md](AI_THREAT_MODEL.md) |
+| GET | `/api/data-quality/dataset` | audit of the loaded dataset (nulls, duplicates, orphans, ranges, consistency). See [data-quality.md](data-quality.md) |

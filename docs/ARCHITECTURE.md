@@ -133,3 +133,108 @@ standalone repository, designed to **consume** a Gold layer rather than duplicat
 | `app/mcp` | MCP server |
 | `app/core` | logging, context, metrics, HTTP helpers |
 | `app/services/container.py` | wiring: chooses each implementation from settings |
+
+---
+
+> **Requested file name.** The brief asked for `docs/architecture.md` and `docs/security.md`. On case-insensitive file systems (Windows, default macOS) those names are the same files as this `ARCHITECTURE.md` and `SECURITY.md`, so the new content lives here and in [SECURITY.md](SECURITY.md) instead of in duplicates.
+
+# FIRA architecture overview: current implementation vs production-scale future
+
+FIRA is a **synthetic-data** financial-crime intelligence platform: a modular monolith (FastAPI + React + PostgreSQL) with
+deterministic detection, graph analysis, an evidence-driven investigation workflow and a grounded AI copilot. Nothing here uses
+real customer data. This page separates what **is implemented** from what a production-scale deployment **would add**.
+
+## Current implementation (end-to-end flow)
+
+```mermaid
+flowchart TD
+    G[Synthetic data generator<br/>seeded, with hidden labels] --> L[Loader: COPY into PostgreSQL]
+    I[POST /api/monitoring/transactions] --> Q[Ingestion gate<br/>22 reason codes, batch ledger, quarantine]
+    Q --> P[(PostgreSQL<br/>customers, accounts, transactions,<br/>alerts, cases, audit, ledgers)]
+    L --> P
+    P --> DQ[Dataset data-quality audit<br/>orphans, duplicates, invalid amounts...]
+    P --> R[Risk engine: 19 deterministic detectors<br/>YAML config, explainable contributions]
+    P --> GR[Graph projection: NetworkX<br/>Neo4j optional]
+    R --> A[Alerts + heuristic triage]
+    R --> M[Money-mule indicators]
+    GR --> M
+    A --> C[Cases / investigations<br/>state machines, evidence, decisions]
+    R --> AG[Investigation agent<br/>14 nodes, 22 tools, claim validator]
+    GR --> AG
+    C --> AU[(Append-only audit log)]
+    R --> CP[AI Investigation Copilot<br/>evidence package -> structured answer]
+    GR --> CP
+    A --> CP
+    CP --> LLM{{LLM provider<br/>none by default}}
+    CP --> API[FIRA API: FastAPI, JWT, RBAC]
+    A --> API
+    AG --> API
+    DQ --> API
+    API --> UI[React dashboard]
+```
+
+| Layer | Technology | Where | Required at runtime |
+|---|---|---|---|
+| Frontend | React 19, TypeScript, Vite | `frontend/` | yes (static build) |
+| API | FastAPI, Pydantic v2, uvicorn | `backend/app/api/`, `main.py` | yes |
+| Store | PostgreSQL 15+ (SQLAlchemy, Alembic 0001-0004) or in-memory pandas for offline runs | `app/data/`, `app/db/` | yes |
+| Detection | deterministic Python detectors + YAML configuration | `app/risk/` | yes |
+| Monitoring | alerts, triage, cases, ingestion gate, governance | `app/monitoring/` | yes |
+| Graph | NetworkX (default), Neo4j (optional) | `app/graph/` | NetworkX built in |
+| Agent / RAG | built-in workflow runner or LangGraph; BM25 + LSA retrieval | `app/agents/`, `app/retrieval/` | yes (works without an LLM) |
+| Copilot | rule-based intents, evidence package, optional LLM | `app/copilot/` | optional LLM |
+| Observability | JSON logs, Prometheus-text metrics, health/readiness, audit | `app/core/` | yes |
+
+### Mapping to the conceptual pipeline
+
+| Concept | Implemented as |
+|---|---|
+| Synthetic banking data | `app/synthetic/generator.py` (+ `monitoring_benchmark.py` for evaluation banks) |
+| Data ingestion | loader (bulk) and `service.ingest` (API batches) |
+| Validation / data quality | ingestion gate **and** stored-dataset audit (`docs/data-quality.md`) |
+| ETL / ELT | generator -> CSV.gz -> `COPY` -> SQL; derived views (graph projection, activity windows, baselines) computed from SQL/pandas at run time (`docs/data-pipeline.md`) |
+| PostgreSQL | system of record |
+| Feature engineering | per-customer baselines, windows, peer statistics inside the risk engine |
+| Risk / AML detection | `app/risk/engine.py`, 19 detectors |
+| Risk scoring | deterministic score with factor contributions |
+| Graph analysis | NetworkX projection and queries |
+| Investigation engine | agent + cases + workbench |
+| Evidence / audit | evidence classes, append-only audit log |
+| AI Investigation Copilot | `app/copilot/service.py` |
+| FIRA API / dashboard | FastAPI + React |
+
+## Graph store: current implementation vs future production option
+
+| | Status |
+|---|---|
+| **Current implementation** | NetworkX, in-process, projected from the relational data. It is the default and is what all tests, the offline benchmark and the acceptance run use. Neo4j is **not required**. |
+| Neo4j backend | **Optional**, selected by configuration (`docker-compose` provides a container). It implements the original graph queries only; integration tests that compare it with NetworkX need a running Neo4j and were **not run** in this validation. The newer analytics (mule indicators, shared-device clusters) are NetworkX-only. |
+| **Future production option** | A dedicated graph database with an incremental projection, for volumes where in-process graphs stop fitting. Not built, not benchmarked. |
+
+## Production-scale future architecture (NOT implemented)
+
+The following would be sensible at real volumes and are **not in this repository**:
+
+* a streaming ingestion layer (for example Kafka) replacing batch/API ingestion;
+* a distributed transformation engine (Spark/Databricks) and an orchestrator (Airflow/Dagster) with dbt-style tested models;
+* a dedicated graph database (Neo4j is supported by the interface for the original queries but the newer analytics are NetworkX-only);
+* table partitioning, read replicas, and an incremental graph projection;
+* a managed secrets store, SSO/OIDC, shared rate-limit and revocation state;
+* a feature store and model registry if learned models were adopted.
+
+They are listed so the design's direction is clear; none is claimed as done.
+
+## Design principles
+
+1. **Deterministic first.** Scores, alerts and graph findings come from code and configuration, reproducibly.
+2. **Evidence before narrative.** Every statement should point at a database record, a computed signal or a retrieved passage.
+3. **AI is a reader, not a source.** The LLM may phrase an interpretation of an evidence package; it cannot add facts, and its text is validated against the package and labelled.
+4. **Human in the loop.** The system recommends; people decide; decisions are attributed and audited.
+5. **Honest measurement.** Metrics only where the denominator exists; synthetic-data limits stated.
+
+## Related documents
+
+[data-pipeline](data-pipeline.md) · [risk-engine](risk-engine.md) · [aml-investigation](aml-investigation.md) ·
+[ai-investigation-copilot](ai-investigation-copilot.md) · [data-quality](data-quality.md) · [SECURITY](SECURITY.md) ·
+[audit of the pre-upgrade state](FIRA_ARCHITECTURE_AUDIT.md) · deeper design: [TRANSACTION_MONITORING_ARCHITECTURE](TRANSACTION_MONITORING_ARCHITECTURE.md),
+[PRODUCTION_ORIENTED_ARCHITECTURE](PRODUCTION_ORIENTED_ARCHITECTURE.md)
